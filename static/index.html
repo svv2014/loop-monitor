@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Loop Monitor</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+<header>
+  <div class="status-dot" id="statusDot" title="Server status"></div>
+  <h1>&#127942; Loop Monitor</h1>
+  <span id="lastRefresh" style="margin-left:auto;color:var(--muted);font-size:12px;"></span>
+</header>
+
+<div class="container">
+
+  <!-- Summary stats -->
+  <div class="stat-row">
+    <div class="stat">
+      <div class="value" id="statEvents">—</div>
+      <div class="label">Total Events</div>
+    </div>
+    <div class="stat">
+      <div class="value" id="statVerdicts">—</div>
+      <div class="label">Verdicts</div>
+    </div>
+    <div class="stat">
+      <div class="value" id="statAgents">—</div>
+      <div class="label">Active Agents</div>
+    </div>
+    <div class="stat">
+      <div class="value" id="statProjects">—</div>
+      <div class="label">Projects</div>
+    </div>
+  </div>
+
+  <!-- Agent cards + Leaderboard -->
+  <div class="grid" style="margin-bottom:24px;">
+
+    <!-- Agent cards -->
+    <div class="card">
+      <div class="card-header">&#129302; Active Agents</div>
+      <div class="card-body">
+        <div class="agent-grid" id="agentGrid">
+          <div class="empty">No agent activity yet</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Leaderboard -->
+    <div class="card">
+      <div class="card-header">&#127942; Leaderboard</div>
+      <div class="card-body" style="padding:0;">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Model / Role</th>
+              <th>Project</th>
+              <th>Score</th>
+              <th>W</th>
+              <th>R</th>
+            </tr>
+          </thead>
+          <tbody id="boardBody">
+            <tr><td colspan="6" class="empty">No scores yet</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Activity feed + Verdicts -->
+  <div class="grid">
+
+    <!-- Live feed -->
+    <div class="card">
+      <div class="card-header">&#128293; Live Activity Feed</div>
+      <div class="card-body" style="padding:0 16px;">
+        <ul class="feed-list" id="feedList">
+          <li class="empty">No events yet</li>
+        </ul>
+      </div>
+      <div class="refresh-note" style="padding:8px 16px;">Auto-refreshes every 15s</div>
+    </div>
+
+    <!-- Judge verdicts -->
+    <div class="card">
+      <div class="card-header">&#9878;&#65039; Judge Verdicts</div>
+      <div class="card-body" style="padding:0 16px;">
+        <ul class="verdict-list" id="verdictList">
+          <li class="empty">No verdicts yet</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+const BASE = "";
+
+const EVENT_EMOJI = {
+  "dev_start":      "&#128640;",
+  "dev_done":       "&#9989;",
+  "dev_fail":       "&#10060;",
+  "review_start":   "&#128269;",
+  "review_done":    "&#128269;",
+  "qa_start":       "&#129514;",
+  "qa_done":        "&#129514;",
+  "qa_fail":        "&#128308;",
+  "merge_start":    "&#128256;",
+  "merge_done":     "&#9989;",
+  "rework_start":   "&#128295;",
+  "rework_done":    "&#128295;",
+  "judge":          "&#9878;&#65039;",
+  "blocked":        "&#128683;",
+};
+
+function getEmoji(event) {
+  for (const [k, v] of Object.entries(EVENT_EMOJI)) {
+    if (event && event.toLowerCase().includes(k)) return v;
+  }
+  return "&#128307;";
+}
+
+function fmtTime(ts) {
+  if (!ts) return "";
+  const d = new Date(ts * 1000);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function fmtRelative(ts) {
+  if (!ts) return "";
+  const sec = Math.floor(Date.now() / 1000) - ts;
+  if (sec < 60)  return `${sec}s ago`;
+  if (sec < 3600) return `${Math.floor(sec/60)}m ago`;
+  return `${Math.floor(sec/3600)}h ago`;
+}
+
+function scoreCls(n) {
+  if (n > 0) return "score-pos";
+  if (n < 0) return "score-neg";
+  return "score-zero";
+}
+
+function outcomeBadge(o) {
+  const map = {
+    "clean": ["badge-clean", "&#9989; clean"],
+    "rework": ["badge-rework", "&#128295; rework"],
+    "qa-fail-rework": ["badge-qa-fail", "&#128308; qa-fail-rework"],
+    "blocked": ["badge-blocked", "&#128683; blocked"],
+  };
+  const [cls, label] = map[o] || ["", o];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+const ROLE_AVATAR = {
+  "dev": "&#129489;&#8205;&#128187;",
+  "reviewer": "&#128270;",
+  "qa": "&#129514;",
+  "merger": "&#128256;",
+  "judge": "&#9878;&#65039;",
+  "planner": "&#128196;",
+  "po": "&#128101;",
+};
+
+function roleAvatar(role) {
+  return ROLE_AVATAR[(role||"").toLowerCase()] || "&#129302;";
+}
+
+async function fetchJSON(path) {
+  const r = await fetch(BASE + path);
+  if (!r.ok) throw new Error(r.statusText);
+  return r.json();
+}
+
+async function loadStatus() {
+  try {
+    const s = await fetchJSON("/api/status");
+    document.getElementById("statusDot").style.background = "var(--green)";
+    document.getElementById("statEvents").textContent   = s.events ?? "—";
+    document.getElementById("statVerdicts").textContent = s.verdicts ?? "—";
+  } catch {
+    document.getElementById("statusDot").style.background = "var(--red)";
+  }
+}
+
+async function loadBoard() {
+  try {
+    const { board } = await fetchJSON("/api/board");
+    const tbody = document.getElementById("boardBody");
+    if (!board.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty">No scores yet</td></tr>'; return; }
+    tbody.innerHTML = board.map((r, i) => {
+      const ri = i + 1;
+      const rcls = ri <= 3 ? `rank-${ri}` : "rank";
+      const scls = scoreCls(r.total);
+      return `<tr>
+        <td class="${rcls}">${ri}</td>
+        <td><strong>${r.model||"?"}</strong><br><span style="color:var(--muted);font-size:11px;">${r.role||"?"}</span></td>
+        <td style="color:var(--muted)">${r.project||"?"}</td>
+        <td class="${scls}">${r.total > 0 ? "+" : ""}${r.total}</td>
+        <td style="color:var(--green)">${r.wins}</td>
+        <td style="color:var(--red)">${r.reworks}</td>
+      </tr>`;
+    }).join("");
+  } catch { /* ignore */ }
+}
+
+async function loadFeed() {
+  try {
+    const { feed } = await fetchJSON("/api/feed?limit=40");
+    const ul = document.getElementById("feedList");
+    if (!feed.length) { ul.innerHTML = '<li class="empty">No events yet</li>'; return; }
+    ul.innerHTML = feed.map(ev => {
+      const emoji = getEmoji(ev.event);
+      const parts = [ev.role, ev.project, ev.issue_num ? `#${ev.issue_num}` : null, ev.pr_num ? `PR#${ev.pr_num}` : null].filter(Boolean);
+      return `<li class="feed-item">
+        <span class="feed-emoji">${emoji}</span>
+        <div class="feed-meta">
+          <div class="feed-event">${ev.event}</div>
+          <div class="feed-detail">${parts.join(" · ")}${ev.detail ? " — " + ev.detail : ""}</div>
+        </div>
+        <span class="feed-time" title="${fmtTime(ev.ts)}">${fmtRelative(ev.ts)}</span>
+      </li>`;
+    }).join("");
+  } catch { /* ignore */ }
+}
+
+async function loadVerdicts() {
+  try {
+    const { feed: events } = await fetchJSON("/api/feed?limit=200");
+    const vlist = document.getElementById("verdictList");
+
+    const { board } = await fetchJSON("/api/board");
+    document.getElementById("statAgents").textContent = board.length || "0";
+
+    const agentMap = {};
+    board.forEach(r => {
+      const key = (r.model || "?") + "|" + (r.role || "?");
+      if (!agentMap[key]) agentMap[key] = { model: r.model, role: r.role, total: 0, wins: 0 };
+      agentMap[key].total += r.total;
+      agentMap[key].wins  += r.wins;
+    });
+
+    const agentGrid = document.getElementById("agentGrid");
+    const agents = Object.values(agentMap);
+    if (!agents.length) {
+      agentGrid.innerHTML = '<div class="empty">No agent activity yet</div>';
+    } else {
+      agentGrid.innerHTML = agents.slice(0, 8).map(a => `
+        <div class="agent-card">
+          <div class="agent-avatar">${roleAvatar(a.role)}</div>
+          <div class="agent-name">${a.model||"?"}</div>
+          <div class="agent-role">${a.role||"?"}</div>
+          <div class="agent-stat ${scoreCls(a.total)}">${a.total > 0 ? "+" : ""}${a.total}</div>
+          <div class="agent-stat-label">points · ${a.wins} wins</div>
+        </div>
+      `).join("");
+    }
+
+    // Load verdicts from /api/feed filtered by judge events, or use a separate endpoint
+    const judgeEvents = events.filter(e => e.event && e.event.toLowerCase().includes("judge"));
+    if (!judgeEvents.length) { vlist.innerHTML = '<li class="empty">No verdicts yet</li>'; return; }
+
+    vlist.innerHTML = judgeEvents.slice(0, 20).map(v => {
+      const pts = parseInt(v.detail?.match(/points[=:]?(-?\d+)/)?.[1] ?? "0", 10);
+      return `<li class="verdict-item">
+        <span class="verdict-pr">${v.pr_num ? "PR#" + v.pr_num : "—"}</span>
+        <div class="verdict-info">
+          <div>${v.detail || v.event}</div>
+          <div class="verdict-meta">${v.model||""} · ${v.role||""} · ${fmtRelative(v.ts)}</div>
+        </div>
+        <span class="verdict-pts ${scoreCls(pts)}">${pts > 0 ? "+" : ""}${pts || ""}</span>
+      </li>`;
+    }).join("");
+  } catch { /* ignore */ }
+}
+
+async function loadProjects() {
+  try {
+    const { projects } = await fetchJSON("/api/projects");
+    document.getElementById("statProjects").textContent = projects.length || "0";
+  } catch { /* ignore */ }
+}
+
+async function refreshAll() {
+  await Promise.allSettled([loadStatus(), loadBoard(), loadFeed(), loadVerdicts(), loadProjects()]);
+  document.getElementById("lastRefresh").textContent = "Last refresh: " + new Date().toLocaleTimeString();
+}
+
+refreshAll();
+setInterval(refreshAll, 15000);
+</script>
+</body>
+</html>

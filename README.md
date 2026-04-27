@@ -1,0 +1,125 @@
+# loop-monitor — Companion dashboard for Loop
+
+> Live agent status, bounty leaderboard, AI judge verdicts, PR scorecards.
+> The visibility layer for the [Loop](https://github.com/svv2014/loop) pipeline.
+
+## What it shows
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      LOOP MONITOR                            │
+│                http://localhost:18792                        │
+├─────────────────────────────────────────────────────────────┤
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────────┐      │
+│  │ Planner  │  │ Builder  │  │ Reviewer │  │ Tester │      │
+│  │ 🟢 idle  │  │ 🔵 busy  │  │ 🟢 idle  │  │ 🟡 qa  │      │
+│  │ 52 pts   │  │ 185 pts  │  │ 120 pts  │  │ 74 pts │      │
+│  └──────────┘  └──────────┘  └──────────┘  └────────┘      │
+│                                                              │
+│  LIVE FEED                           BOUNTY BOARD            │
+│  • 🔵 Builder working #35           1. sonnet   185 pts    │
+│  • ✅ Reviewer approved #301         2. opus     120 pts    │
+│  • 🏆 Merged #42 → +13 bounty       3. haiku     12 pts    │
+│                                                              │
+│  JUDGE VERDICT (PR #42):                                     │
+│  "Clean merge, solid spec, no rework. Full bounty."          │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## What it does
+
+- **Live status** — every Loop handler sends events as it works
+  (`dev_start`, `review_done`, `qa_pass`, `merge_done`, etc.). The
+  dashboard renders them in real time.
+- **Bounty leaderboard** — points awarded per role per merged PR.
+  Different agents/models accumulate scores. Helps you see which
+  configurations work best.
+- **AI judge** — runs after every merge, reads the PR timeline, posts
+  a scorecard comment with role-level points + a one-sentence verdict.
+- **History tab** — full run table, timeline view, stats cards.
+- **Work queue** — cross-project pipeline backlog with priority ordering.
+
+## Install
+
+```bash
+git clone https://github.com/svv2014/loop-monitor.git
+cd loop-monitor
+pip install -r requirements.txt
+./run.sh
+```
+
+Open http://127.0.0.1:18792.
+
+## Wire it to Loop
+
+In your Loop core's `loop.env`:
+
+```bash
+LOOP_BOUNTY_URL=http://127.0.0.1:18792
+```
+
+That's it. Loop's handlers send fire-and-forget bounty events to the
+monitor. If the monitor is down, the pipeline is unaffected.
+
+## API
+
+### `POST /api/report` — bounty event ingestion (v1.0)
+
+Versioned payload per the bounty event API contract. Loop core sends
+this on every pipeline state change.
+
+```json
+{
+  "api": "1.0",
+  "core_version": "0.1.0",
+  "event": "dev_done",
+  "role": "dev",
+  "agent": "claude",
+  "model": "sonnet",
+  "project": "ppl",
+  "issue_num": 42,
+  "pr_num": 100,
+  "detail": "attempt 1/3",
+  "timestamp": "2026-04-27T04:00:00Z"
+}
+```
+
+- Accepts `api: "1.x"` — gracefully ignores unknown fields
+- Rejects future major versions (`api: "2.x"`) with HTTP 426
+- Missing `api` field treated as `"1.0"` legacy
+
+### `GET /api/health` — monitor status
+
+```json
+{
+  "status": "ok",
+  "monitor_version": "0.1.0",
+  "supported_bounty_api": "1.x"
+}
+```
+
+## Security
+
+loop-monitor is **designed to bind to `127.0.0.1`**. The bounty event
+API has **no authentication**. Don't expose port 18792 to the network.
+
+If you need network exposure, terminate auth at a reverse proxy. See
+[SECURITY.md](SECURITY.md) for the full trust model.
+
+## Development
+
+```bash
+pip install -r requirements.txt
+uvicorn server:app --host 127.0.0.1 --port 18792 --reload
+pytest tests/
+```
+
+## Versioning
+
+[Semantic Versioning](https://semver.org). loop-monitor independently
+versioned from Loop core; the bounty event API contract is shared and
+versioned separately (currently `1.0`).
+
+## License
+
+[MIT](LICENSE).

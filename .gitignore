@@ -1,0 +1,12 @@
+# Runtime artifacts
+bounties.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Local tooling state
+.claude/
+__pycache__/
+*.pyc
+.venv/
+venv/
