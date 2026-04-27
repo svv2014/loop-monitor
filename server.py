@@ -2,6 +2,7 @@
 """Loop Monitor — FastAPI service tracking agent performance across Loop pipeline runs."""
 
 import json
+import logging
 import os
 import sqlite3
 import time
@@ -11,9 +12,11 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 DB_PATH = Path(__file__).parent / "bounties.db"
 STATIC_DIR = Path(__file__).parent / "static"
@@ -157,6 +160,9 @@ def _upsert_score(conn: sqlite3.Connection, model: str, role: str, project: str,
 SUPPORTED_API_MAJOR = "1"
 MONITOR_VERSION = (Path(__file__).parent / "VERSION").read_text().strip() if (Path(__file__).parent / "VERSION").exists() else "unknown"
 
+# In-memory counter: core_version string → number of /api/report calls seen
+core_version_counts: dict = {}
+
 
 @app.get("/api/health")
 def get_health():
@@ -164,23 +170,28 @@ def get_health():
         "status": "ok",
         "monitor_version": MONITOR_VERSION,
         "supported_bounty_api": f"{SUPPORTED_API_MAJOR}.x",
+        "core_version_counts": core_version_counts,
     }
 
 
 @app.post("/api/report", status_code=201)
 def post_report(payload: ReportPayload):
     # Version negotiation: accept v1.x; reject other majors with 426.
+    if payload.api is None:
+        logger.warning("Missing 'api' field in /api/report payload; treating as v1.0 (legacy)")
     api = (payload.api or "1.0").strip()
     major = api.split(".", 1)[0] if api else "1"
     if major != SUPPORTED_API_MAJOR:
-        raise HTTPException(
+        return JSONResponse(
             status_code=426,
-            detail={
+            content={
                 "error": "version_unsupported",
                 "supported": [f"{SUPPORTED_API_MAJOR}.x"],
-                "received": api,
             },
         )
+
+    cv = payload.core_version or "unknown"
+    core_version_counts[cv] = core_version_counts.get(cv, 0) + 1
 
     conn = get_db()
     try:
