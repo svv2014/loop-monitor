@@ -13,7 +13,7 @@ its own version (currently `1.0`) baked into every payload.
 ## [0.1.0] - 2026-04-27
 
 Initial public release. loop-monitor is the public rebrand of the
-prior bounty-monitor companion.
+prior loop-monitor companion.
 
 ### Added
 

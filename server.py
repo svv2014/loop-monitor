@@ -1,74 +1,98 @@
-#!/usr/bin/env python3
-"""Loop Monitor — FastAPI service tracking agent performance across Loop pipeline runs."""
-
-import json
-import os
 import sqlite3
-import time
+import json
+from datetime import datetime, timezone
 from contextlib import asynccontextmanager
-from datetime import datetime
+from typing import Optional, Any
+
 from pathlib import Path
-from typing import Optional
-
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
-DB_PATH = Path(__file__).parent / "bounties.db"
-STATIC_DIR = Path(__file__).parent / "static"
-PORT = 18792
+DB_PATH = "bounty.db"
 
 
-def get_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(DB_PATH))
+def get_db():
+    conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
 
-def init_db() -> None:
+def init_db():
     conn = get_db()
-    conn.executescript(
-        """
+    conn.executescript("""
         CREATE TABLE IF NOT EXISTS events (
-            id        INTEGER PRIMARY KEY AUTOINCREMENT,
-            ts        INTEGER NOT NULL,
-            event     TEXT    NOT NULL,
-            agent     TEXT,
-            model     TEXT,
-            role      TEXT,
-            project   TEXT,
-            issue_num INTEGER,
-            pr_num    INTEGER,
-            detail    TEXT
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project TEXT NOT NULL,
+            role TEXT NOT NULL,
+            model TEXT,
+            event_type TEXT NOT NULL,
+            issue_number INTEGER,
+            pr_number INTEGER,
+            detail TEXT,
+            payload TEXT,
+            created_at TEXT NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS verdicts (
-            id        INTEGER PRIMARY KEY AUTOINCREMENT,
-            ts        INTEGER NOT NULL,
-            pr_num    INTEGER NOT NULL,
-            repo      TEXT    NOT NULL,
-            outcome   TEXT    NOT NULL,
-            points    INTEGER NOT NULL DEFAULT 0,
-            model     TEXT,
-            role      TEXT,
-            project   TEXT,
-            summary   TEXT
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project TEXT NOT NULL,
+            role TEXT NOT NULL,
+            model TEXT,
+            points INTEGER NOT NULL DEFAULT 0,
+            reason TEXT,
+            created_at TEXT NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS scores (
-            id        INTEGER PRIMARY KEY AUTOINCREMENT,
-            model     TEXT    NOT NULL,
-            role      TEXT    NOT NULL,
-            project   TEXT    NOT NULL,
-            total     INTEGER NOT NULL DEFAULT 0,
-            wins      INTEGER NOT NULL DEFAULT 0,
-            reworks   INTEGER NOT NULL DEFAULT 0,
-            UNIQUE(model, role, project)
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project TEXT NOT NULL,
+            role TEXT NOT NULL,
+            model TEXT,
+            total_points INTEGER NOT NULL DEFAULT 0,
+            verdict_count INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL
         );
-        """
-    )
+
+        CREATE TABLE IF NOT EXISTS issue_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project TEXT NOT NULL,
+            issue_number INTEGER NOT NULL,
+            pr_number INTEGER,
+            role TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            agent TEXT,
+            model TEXT,
+            duration_seconds INTEGER,
+            rework_count INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS pipeline_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project TEXT NOT NULL,
+            issue_number INTEGER NOT NULL,
+            pr_number INTEGER,
+            title TEXT,
+            outcome TEXT,
+            started_at TIMESTAMP,
+            completed_at TIMESTAMP,
+            total_duration_seconds INTEGER,
+            rework_count INTEGER DEFAULT 0,
+            total_bounty INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    # Migrate existing events table if new columns are missing
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(events)")}
+    for col, defn in [
+        ("issue_number", "INTEGER"),
+        ("pr_number", "INTEGER"),
+        ("detail", "TEXT"),
+    ]:
+        if col not in cols:
+            conn.execute(f"ALTER TABLE events ADD COLUMN {col} {defn}")
+
     conn.commit()
     conn.close()
 
@@ -79,87 +103,228 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Loop Monitor", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Loop Monitor", lifespan=lifespan)
 
-if STATIC_DIR.exists():
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-
-
-# ── Request models ────────────────────────────────────────────────────────────
 
 class ReportPayload(BaseModel):
-    """Bounty event payload v1.0 — see Loop core's bounty event API spec.
+    """Bounty event payload — accepts both legacy and v1.0 (loop) field names.
 
-    `api` is the API version sender claims to use. Monitor accepts 1.x
-    (with unknown fields silently ignored) and rejects future majors with
-    HTTP 426 in the dispatch handler. Missing `api` is treated as legacy
-    v1.0 with a deprecation log entry.
+    Legacy (asdlc-era):  event_type, issue_number, pr_number, project, role
+    v1.0 (loop core):    event,      issue_num,    pr_num,    api, core_version, timestamp
+
+    Server normalizes to legacy field names internally. Either schema works.
     """
-    api: Optional[str] = None              # e.g. "1.0"; v1.x accepted
-    core_version: Optional[str] = None     # sender's loop core version, telemetry
-    event: str
-    agent: Optional[str] = None
-    model: Optional[str] = None
-    role: Optional[str] = None
+    # Bounty event API version (v1.0 spec) — optional; absent = legacy
+    api: Optional[str] = None
+    core_version: Optional[str] = None
+    timestamp: Optional[str] = None
+
     project: Optional[str] = None
-    issue_num: Optional[int] = None
-    pr_num: Optional[int] = None
+    role: Optional[str] = None
+    model: Optional[str] = None
+    event_type: Optional[str] = None
+    event: Optional[str] = None        # alias for event_type (v1.0 schema)
+    payload: Optional[Any] = None
+    issue_number: Optional[int] = None
+    issue_num: Optional[int] = None     # alias for issue_number (v1.0 schema)
+    pr_number: Optional[int] = None
+    pr_num: Optional[int] = None        # alias for pr_number (v1.0 schema)
+    agent: Optional[str] = None
     detail: Optional[str] = None
-    timestamp: Optional[str] = None        # ISO 8601 UTC; client-set
+    duration_seconds: Optional[int] = None
+    rework_count: Optional[int] = None
 
     class Config:
-        extra = "ignore"                   # gracefully ignore unknown fields (forward-compat)
+        extra = "ignore"
+
+    @model_validator(mode="after")
+    def _backfill_legacy_aliases(self):
+        # v1.0 schema uses 'event' / 'issue_num' / 'pr_num'; legacy uses
+        # 'event_type' / 'issue_number' / 'pr_number'. Internal code reads
+        # legacy names — backfill from v1.0 when only v1.0 names provided.
+        if not self.event_type and self.event:
+            self.event_type = self.event
+        if self.issue_number is None and self.issue_num is not None:
+            self.issue_number = self.issue_num
+        if self.pr_number is None and self.pr_num is not None:
+            self.pr_number = self.pr_num
+        if not self.event_type:
+            self.event_type = "unknown"
+        return self
 
 
 class VerdictPayload(BaseModel):
-    pr_num: int
-    repo: str
-    outcome: str        # clean | rework | qa-fail-rework | blocked
-    points: int = 0
+    project: str
+    role: str
     model: Optional[str] = None
-    role: Optional[str] = None
-    project: Optional[str] = None
-    summary: Optional[str] = None
+    points: int
+    reason: Optional[str] = None
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+PROJECTS = {
+    'ppl':               'svv2014/ppl-study',
+    'boba-event':        'svv2014/boba-event',
+    'loop':             'svv2014/loop',
+    'bounty':            'svv2014/loop-monitor',
+    'vrefm-classifier':  'svv2014/vrefm-classifier',
+    'pa-scanner':        'svv2014/pa-scanner',
+    'ntc':               'svv2014/NanoTraderCopilot',
+}
 
-OUTCOME_POINTS = {
-    "clean": 3,
-    "rework": -1,
-    "qa-fail-rework": -2,
-    "blocked": 0,
+BOUNTY_POINTS = {
+    "dev_done":     3,
+    "rework_done":  2,
+    "review_done":  2,
+    "merge_done":   2,
+    "po_done":      2,
+    "qa_pass":      1,
+    "qa_done":      1,
+    "dev_failed":  -1,
+    "rework_failed": -1,
+    "review_failed": -1,
+    "po_failed":   -1,
 }
 
 
-def _upsert_score(conn: sqlite3.Connection, model: str, role: str, project: str,
-                  points: int, outcome: str) -> None:
-    m = model or "unknown"
-    r = role or "unknown"
-    p = project or "unknown"
-    wins = 1 if outcome == "clean" else 0
-    reworks = 1 if outcome in ("rework", "qa-fail-rework") else 0
+def _auto_bounty(conn, data: "ReportPayload", now: str):
+    """Auto-insert a verdict when a terminal event is received."""
+    pts = BOUNTY_POINTS.get(data.event_type)
+    if pts is None:
+        return
+    reason = f"auto: {data.event_type}"
+    if data.issue_number:
+        reason += f" issue #{data.issue_number}"
+    elif data.pr_number:
+        reason += f" PR #{data.pr_number}"
     conn.execute(
-        """
-        INSERT INTO scores (model, role, project, total, wins, reworks)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(model, role, project) DO UPDATE SET
-            total   = total   + excluded.total,
-            wins    = wins    + excluded.wins,
-            reworks = reworks + excluded.reworks
-        """,
-        (m, r, p, points, wins, reworks),
+        "INSERT INTO verdicts (project, role, model, points, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (data.project, data.role, data.model, pts, reason, now),
+    )
+    existing = conn.execute(
+        "SELECT id, total_points, verdict_count FROM scores WHERE project=? AND role=? AND model IS ?",
+        (data.project, data.role, data.model),
+    ).fetchone()
+    if existing:
+        conn.execute(
+            "UPDATE scores SET total_points=?, verdict_count=?, updated_at=? WHERE id=?",
+            (existing["total_points"] + pts, existing["verdict_count"] + 1, now, existing["id"]),
+        )
+    else:
+        conn.execute(
+            "INSERT INTO scores (project, role, model, total_points, verdict_count, updated_at) VALUES (?, ?, ?, ?, 1, ?)",
+            (data.project, data.role, data.model, pts, now),
+        )
+
+
+def _insert_event(data: ReportPayload):
+    conn = get_db()
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """INSERT INTO events
+           (project, role, model, event_type, issue_number, pr_number, detail, payload, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            data.project,
+            data.role,
+            data.model,
+            data.event_type,
+            data.issue_number,
+            data.pr_number,
+            data.detail,
+            json.dumps(data.payload) if data.payload else None,
+            now,
+        ),
     )
 
+    if data.issue_number is not None:
+        conn.execute(
+            """INSERT INTO issue_history
+               (project, issue_number, pr_number, role, event_type, agent, model,
+                duration_seconds, rework_count, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                data.project,
+                data.issue_number,
+                data.pr_number,
+                data.role,
+                data.event_type,
+                data.agent,
+                data.model,
+                data.duration_seconds,
+                data.rework_count or 0,
+                now,
+            ),
+        )
 
-# ── Endpoints ─────────────────────────────────────────────────────────────────
+        existing_run = conn.execute(
+            "SELECT id, rework_count FROM pipeline_runs WHERE project=? AND issue_number=?",
+            (data.project, data.issue_number),
+        ).fetchone()
+
+        if existing_run:
+            updates = ["completed_at=?"]
+            params: list = [now]
+            if data.pr_number is not None:
+                updates.append("pr_number=?")
+                params.append(data.pr_number)
+            if data.rework_count is not None:
+                updates.append("rework_count=rework_count+?")
+                params.append(data.rework_count)
+            params.append(existing_run["id"])
+            conn.execute(
+                f"UPDATE pipeline_runs SET {', '.join(updates)} WHERE id=?",
+                params,
+            )
+        else:
+            conn.execute(
+                """INSERT INTO pipeline_runs
+                   (project, issue_number, pr_number, started_at, completed_at, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (data.project, data.issue_number, data.pr_number, now, now, now),
+            )
+
+    _auto_bounty(conn, data, now)
+    conn.commit()
+    conn.close()
+
+
+def _insert_verdict(data: VerdictPayload):
+    conn = get_db()
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        "INSERT INTO verdicts (project, role, model, points, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (data.project, data.role, data.model, data.points, data.reason, now),
+    )
+    # Upsert into scores
+    existing = conn.execute(
+        "SELECT id, total_points, verdict_count FROM scores WHERE project=? AND role=? AND model IS ?",
+        (data.project, data.role, data.model),
+    ).fetchone()
+    if existing:
+        conn.execute(
+            "UPDATE scores SET total_points=?, verdict_count=?, updated_at=? WHERE id=?",
+            (
+                existing["total_points"] + data.points,
+                existing["verdict_count"] + 1,
+                now,
+                existing["id"],
+            ),
+        )
+    else:
+        conn.execute(
+            "INSERT INTO scores (project, role, model, total_points, verdict_count, updated_at) VALUES (?, ?, ?, ?, 1, ?)",
+            (data.project, data.role, data.model, data.points, now),
+        )
+    conn.commit()
+    conn.close()
+
 
 SUPPORTED_API_MAJOR = "1"
 MONITOR_VERSION = (Path(__file__).parent / "VERSION").read_text().strip() if (Path(__file__).parent / "VERSION").exists() else "unknown"
 
 
 @app.get("/api/health")
-def get_health():
+def health():
     return {
         "status": "ok",
         "monitor_version": MONITOR_VERSION,
@@ -167,142 +332,411 @@ def get_health():
     }
 
 
-@app.post("/api/report", status_code=201)
-def post_report(payload: ReportPayload):
-    # Version negotiation: accept v1.x; reject other majors with 426.
-    api = (payload.api or "1.0").strip()
-    major = api.split(".", 1)[0] if api else "1"
-    if major != SUPPORTED_API_MAJOR:
-        raise HTTPException(
-            status_code=426,
-            detail={
-                "error": "version_unsupported",
-                "supported": [f"{SUPPORTED_API_MAJOR}.x"],
-                "received": api,
-            },
-        )
-
-    conn = get_db()
-    try:
-        conn.execute(
-            """
-            INSERT INTO events (ts, event, agent, model, role, project, issue_num, pr_num, detail)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                int(time.time()),
-                payload.event,
-                payload.agent,
-                payload.model,
-                payload.role,
-                payload.project,
-                payload.issue_num,
-                payload.pr_num,
-                payload.detail,
-            ),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-    return {"ok": True, "monitor_version": MONITOR_VERSION}
+@app.post("/api/report", status_code=202)
+async def report(data: ReportPayload, background_tasks: BackgroundTasks):
+    # Bounty event API version negotiation: accept 1.x, reject other majors with 426.
+    if data.api:
+        major = data.api.split(".", 1)[0]
+        if major != SUPPORTED_API_MAJOR:
+            raise HTTPException(
+                status_code=426,
+                detail={
+                    "error": "version_unsupported",
+                    "supported": [f"{SUPPORTED_API_MAJOR}.x"],
+                    "received": data.api,
+                },
+            )
+    background_tasks.add_task(_insert_event, data)
+    return {"status": "accepted", "monitor_version": MONITOR_VERSION}
 
 
-@app.post("/api/verdict", status_code=201)
-def post_verdict(payload: VerdictPayload):
-    if payload.outcome not in OUTCOME_POINTS and payload.points == 0:
-        pass  # allow custom outcomes with explicit points
-    points = payload.points if payload.points != 0 else OUTCOME_POINTS.get(payload.outcome, 0)
-    conn = get_db()
-    try:
-        conn.execute(
-            """
-            INSERT INTO verdicts (ts, pr_num, repo, outcome, points, model, role, project, summary)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                int(time.time()),
-                payload.pr_num,
-                payload.repo,
-                payload.outcome,
-                points,
-                payload.model,
-                payload.role,
-                payload.project,
-                payload.summary,
-            ),
-        )
-        if payload.model or payload.role or payload.project:
-            _upsert_score(conn, payload.model or "", payload.role or "",
-                          payload.project or "", points, payload.outcome)
-        conn.commit()
-    finally:
-        conn.close()
-    return {"ok": True, "points": points}
+@app.post("/api/verdict", status_code=202)
+async def verdict(data: VerdictPayload, background_tasks: BackgroundTasks):
+    background_tasks.add_task(_insert_verdict, data)
+    return {"status": "accepted"}
 
 
 @app.get("/api/board")
-def get_board():
+def board():
     conn = get_db()
-    try:
-        rows = conn.execute(
-            "SELECT model, role, project, total, wins, reworks FROM scores ORDER BY total DESC, wins DESC LIMIT 50"
-        ).fetchall()
-        return {"board": [dict(r) for r in rows]}
-    finally:
-        conn.close()
+    rows = conn.execute(
+        "SELECT project, role, model, total_points, verdict_count FROM scores ORDER BY total_points DESC"
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@app.get("/api/history")
+def history(limit: int = 50):
+    """Completed jobs: *_done/*_pass events paired with their *_start for duration."""
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT
+            d.id, d.project, d.role, d.model, d.event_type,
+            d.issue_number, d.pr_number, d.detail, d.created_at AS completed_at,
+            s.created_at AS started_at,
+            CASE
+                WHEN s.created_at IS NOT NULL
+                THEN CAST((julianday(d.created_at) - julianday(s.created_at)) * 86400 AS INTEGER)
+                ELSE NULL
+            END AS duration_seconds,
+            v.points
+        FROM events d
+        LEFT JOIN events s ON s.project = d.project
+            AND s.role = d.role
+            AND s.event_type = REPLACE(d.event_type, '_done', '_start')
+            AND s.id = (
+                SELECT MAX(s2.id) FROM events s2
+                WHERE s2.project = d.project AND s2.role = d.role
+                  AND s2.event_type = REPLACE(d.event_type, '_done', '_start')
+                  AND s2.id < d.id
+            )
+        LEFT JOIN verdicts v ON v.project = d.project AND v.role = d.role
+            AND v.reason LIKE '%auto: ' || d.event_type || '%'
+            AND v.created_at >= d.created_at
+            AND v.id = (SELECT MIN(v2.id) FROM verdicts v2 WHERE v2.project=d.project AND v2.role=d.role AND v2.created_at >= d.created_at AND v2.reason LIKE '%auto: ' || d.event_type || '%')
+        WHERE d.event_type LIKE '%_done' OR d.event_type LIKE '%_pass' OR d.event_type LIKE '%_failed'
+        ORDER BY d.id DESC
+        LIMIT ?
+    """, (limit,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@app.get("/api/active")
+def active():
+    """Currently running workers: latest event per project+role is a *_start within last 4h."""
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT e.project, e.role, e.model, e.event_type, e.issue_number, e.pr_number,
+               e.detail, e.created_at
+        FROM events e
+        INNER JOIN (
+            SELECT project, role, MAX(id) AS max_id FROM events GROUP BY project, role
+        ) latest ON e.id = latest.max_id
+        WHERE e.event_type LIKE '%_start'
+          AND e.created_at >= datetime('now', '-4 hours')
+        ORDER BY e.created_at DESC
+    """).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 @app.get("/api/feed")
-def get_feed(limit: int = 50):
-    limit = min(limit, 200)
+def feed():
     conn = get_db()
-    try:
-        rows = conn.execute(
-            "SELECT * FROM events ORDER BY ts DESC LIMIT ?", (limit,)
-        ).fetchall()
-        return {"feed": [dict(r) for r in rows]}
-    finally:
-        conn.close()
+    rows = conn.execute(
+        """SELECT id, project, role, model, event_type, issue_number, pr_number,
+                  detail, payload, created_at
+           FROM events ORDER BY id DESC LIMIT 50"""
+    ).fetchall()
+    conn.close()
+    result = []
+    for r in rows:
+        entry = dict(r)
+        if entry["payload"]:
+            entry["payload"] = json.loads(entry["payload"])
+        result.append(entry)
+    return result
 
 
 @app.get("/api/status")
-def get_status():
+def status():
     conn = get_db()
-    try:
-        ev_count = conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
-        vd_count = conn.execute("SELECT COUNT(*) FROM verdicts").fetchone()[0]
-        latest = conn.execute("SELECT ts FROM events ORDER BY ts DESC LIMIT 1").fetchone()
-        return {
-            "ok": True,
-            "events": ev_count,
-            "verdicts": vd_count,
-            "last_event_ts": latest[0] if latest else None,
-            "db": str(DB_PATH),
-        }
-    finally:
-        conn.close()
+    rows = conn.execute("""
+        SELECT e.project, e.role, e.model, e.event_type, e.issue_number, e.pr_number,
+               e.detail, e.payload, e.created_at
+        FROM events e
+        INNER JOIN (
+            SELECT project, role, MAX(id) AS max_id FROM events GROUP BY project, role
+        ) latest ON e.id = latest.max_id
+        ORDER BY e.project, e.role
+    """).fetchall()
+    conn.close()
+    result = []
+    for r in rows:
+        entry = dict(r)
+        if entry["payload"]:
+            entry["payload"] = json.loads(entry["payload"])
+        result.append(entry)
+    return result
+
+
+@app.get("/api/verdicts")
+def get_verdicts():
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT id, project, role, model, points, reason, created_at FROM verdicts ORDER BY id DESC LIMIT 50"
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@app.get("/api/history/{project}/{issue}")
+def get_history(project: str, issue: int):
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT id, project, issue_number, pr_number, role, event_type, agent, model,
+                  duration_seconds, rework_count, created_at
+           FROM issue_history
+           WHERE project=? AND issue_number=?
+           ORDER BY id ASC""",
+        (project, issue),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@app.get("/api/runs")
+def get_runs():
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT id, project, issue_number, pr_number, title, outcome,
+                  started_at, completed_at, total_duration_seconds,
+                  rework_count, total_bounty, created_at
+           FROM pipeline_runs
+           ORDER BY id DESC"""
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@app.get("/api/runs/{project}")
+def get_runs_by_project(project: str):
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT id, project, issue_number, pr_number, title, outcome,
+                  started_at, completed_at, total_duration_seconds,
+                  rework_count, total_bounty, created_at
+           FROM pipeline_runs
+           WHERE project=?
+           ORDER BY id DESC""",
+        (project,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@app.get("/api/stats")
+def get_stats():
+    conn = get_db()
+    row = conn.execute(
+        """SELECT
+               COUNT(*) AS total_runs,
+               AVG(total_duration_seconds) AS avg_duration_seconds,
+               ROUND(100.0 * SUM(CASE WHEN outcome = 'clean' THEN 1 ELSE 0 END) / MAX(COUNT(*), 1), 2) AS success_rate,
+               ROUND(100.0 * SUM(CASE WHEN rework_count > 0 THEN 1 ELSE 0 END) / MAX(COUNT(*), 1), 2) AS rework_rate
+           FROM pipeline_runs"""
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else {}
+
+
+@app.get("/api/stats/timeline/pr/{project}/{pr_number}")
+def get_timeline_by_pr(project: str, pr_number: int):
+    """Look up issue_number from pipeline_runs then return the same timeline payload."""
+    from fastapi import HTTPException
+
+    conn = get_db()
+    run_row = conn.execute(
+        "SELECT issue_number FROM pipeline_runs WHERE project=? AND pr_number=? ORDER BY id DESC LIMIT 1",
+        (project, pr_number),
+    ).fetchone()
+    conn.close()
+
+    if run_row is None:
+        raise HTTPException(status_code=404, detail="PR not found")
+
+    return get_timeline(project, run_row["issue_number"])
+
+
+@app.get("/api/stats/timeline/{project}/{issue}")
+def get_timeline(project: str, issue: int):
+    """Stage-by-stage timeline for a single issue."""
+    conn = get_db()
+
+    summary_row = conn.execute(
+        """SELECT title, outcome, total_duration_seconds, rework_count, pr_number
+           FROM pipeline_runs
+           WHERE project=? AND issue_number=?
+           ORDER BY id DESC LIMIT 1""",
+        (project, issue),
+    ).fetchone()
+
+    # Collect all related PR numbers (issue_history may link PRs)
+    pr_numbers = [r[0] for r in conn.execute(
+        "SELECT DISTINCT pr_number FROM issue_history WHERE project=? AND issue_number=? AND pr_number IS NOT NULL",
+        (project, issue),
+    ).fetchall()]
+    if summary_row and summary_row["pr_number"]:
+        pr_numbers.append(summary_row["pr_number"])
+    pr_numbers = list(set(pr_numbers))
+
+    # Build timeline from events table — covers both issue-scoped and PR-scoped events
+    if pr_numbers:
+        placeholders = ",".join("?" * len(pr_numbers))
+        params = [project, issue] + pr_numbers
+        history_rows = conn.execute(
+            f"""SELECT role, event_type, created_at FROM events
+               WHERE project=?
+                 AND (issue_number=? OR pr_number IN ({placeholders}))
+               ORDER BY created_at ASC""",
+            params,
+        ).fetchall()
+    else:
+        history_rows = conn.execute(
+            """SELECT role, event_type, created_at FROM events
+               WHERE project=? AND issue_number=?
+               ORDER BY created_at ASC""",
+            (project, issue),
+        ).fetchall()
+
+    conn.close()
+
+    events = _build_timeline_events(history_rows)
+
+    summary: dict = {}
+    if summary_row:
+        summary = dict(summary_row)
+
+    return {
+        "issue_number": issue,
+        "project": project,
+        "repo": PROJECTS.get(project, project),
+        "summary": summary,
+        "events": events,
+    }
+
+
+def _build_timeline_events(history_rows) -> list:
+    """Pair *_start and *_done/*_failed rows into stage entries."""
+    # key: (role, prefix) -> start row
+    pending: dict = {}
+    result = []
+
+    for row in history_rows:
+        role = row["role"]
+        event_type = row["event_type"]
+        created_at = row["created_at"]
+
+        if event_type.endswith("_start"):
+            prefix = event_type[: -len("_start")]
+            pending[(role, prefix)] = created_at
+        elif event_type.endswith("_done") or event_type.endswith("_failed"):
+            if event_type.endswith("_done"):
+                prefix = event_type[: -len("_done")]
+                status = "done"
+            else:
+                prefix = event_type[: -len("_failed")]
+                status = "failed"
+            started_at = pending.pop((role, prefix), None)
+            duration_seconds = None
+            if started_at:
+                try:
+                    from datetime import datetime
+                    for fmt in ("%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d %H:%M:%S"):
+                        try:
+                            t_start = datetime.strptime(started_at.replace("+00:00", "+0000"), fmt)
+                            t_end = datetime.strptime(created_at.replace("+00:00", "+0000"), fmt)
+                            duration_seconds = int((t_end - t_start).total_seconds())
+                            break
+                        except ValueError:
+                            continue
+                except Exception:
+                    pass
+            result.append({
+                "role": role,
+                "event_type": f"{prefix}_{status}",
+                "status": status,
+                "started_at": started_at,
+                "completed_at": created_at,
+                "duration_seconds": duration_seconds,
+            })
+
+    # Any still-pending starts are running
+    for (role, prefix), started_at in pending.items():
+        result.append({
+            "role": role,
+            "event_type": f"{prefix}_start",
+            "status": "running",
+            "started_at": started_at,
+            "completed_at": None,
+            "duration_seconds": None,
+        })
+
+    # Sort by started_at
+    result.sort(key=lambda e: e["started_at"] or "")
+    return result
+
+
+@app.get("/api/stats/stages")
+def get_stats_stages():
+    """Avg duration per pipeline stage by pairing *_start and *_done events."""
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT
+            REPLACE(d.event_type, '_done', '') AS stage,
+            ROUND(AVG(
+                (julianday(d.created_at) - julianday(s.created_at)) * 86400
+            ), 2) AS avg_seconds,
+            COUNT(*) AS count
+        FROM events d
+        JOIN events s ON s.project = d.project
+            AND s.role = d.role
+            AND s.event_type = REPLACE(d.event_type, '_done', '_start')
+            AND s.id = (
+                SELECT MAX(s2.id) FROM events s2
+                WHERE s2.project = d.project AND s2.role = d.role
+                  AND s2.event_type = REPLACE(d.event_type, '_done', '_start')
+                  AND s2.id < d.id
+            )
+        WHERE d.event_type LIKE '%_done'
+        GROUP BY stage
+        ORDER BY stage
+    """).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@app.get("/api/stats/activity")
+def get_stats_activity():
+    """Daily event counts per project for the last 14 days."""
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT DATE(created_at) as date, project, COUNT(*) as n
+        FROM events
+        WHERE created_at >= datetime('now', '-14 days')
+        GROUP BY DATE(created_at), project
+        ORDER BY date
+    """).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@app.get("/api/stats/rework")
+def get_stats_rework():
+    """Per-project rework_start and review_done counts for rework rate cards."""
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT
+            project,
+            SUM(CASE WHEN event_type = 'rework_start' THEN 1 ELSE 0 END) AS rework_starts,
+            SUM(CASE WHEN event_type = 'review_done'  THEN 1 ELSE 0 END) AS review_dones
+        FROM events
+        GROUP BY project
+        ORDER BY project
+    """).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 @app.get("/api/projects")
 def get_projects():
     conn = get_db()
-    try:
-        rows = conn.execute(
-            "SELECT DISTINCT project FROM events WHERE project IS NOT NULL ORDER BY project"
-        ).fetchall()
-        return {"projects": [r[0] for r in rows]}
-    finally:
-        conn.close()
+    rows = conn.execute("SELECT DISTINCT project FROM events").fetchall()
+    conn.close()
+    active = {r["project"] for r in rows}
+    return [{"project": p, "repo": r} for p, r in PROJECTS.items() if p in active]
 
 
-@app.get("/", response_class=HTMLResponse)
-def root():
-    index = STATIC_DIR / "index.html"
-    if index.exists():
-        return FileResponse(str(index))
-    return HTMLResponse("<h1>Loop Monitor</h1><p>Static files not found.</p>")
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=PORT)
+app.mount("/", StaticFiles(directory="static", html=True), name="static")

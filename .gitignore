@@ -10,3 +10,6 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+bounty.db
+bounty.db-shm
+bounty.db-wal
