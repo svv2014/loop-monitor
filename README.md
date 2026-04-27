@@ -123,3 +123,11 @@ versioned separately (currently `1.0`).
 ## License
 
 [MIT](LICENSE).
+
+## 💰 Bounty Contribution
+
+- **Task:** [Task] bin/loop-mon — terminal dashboard for the bounty/judge stream
+- **Reward:** $7
+- **Source:** GitHub-Bounty
+- **Date:** 2026-04-27
+
