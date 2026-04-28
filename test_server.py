@@ -24,7 +24,8 @@ def test_report_accepted():
         "event_type": "started",
     })
     assert resp.status_code == 202
-    assert resp.json() == {"status": "accepted"}
+    assert resp.json()["status"] == "accepted"
+    assert "monitor_version" in resp.json()
 
 
 def test_verdict_accepted():
