@@ -436,13 +436,46 @@ def active():
     return [dict(r) for r in rows]
 
 
+VALID_FEED_STATUSES = {'done', 'fail', 'pass', 'skip'}
+
+
+def _derive_status(event_type: str) -> str:
+    if not event_type:
+        return 'unknown'
+    suffix = event_type.rsplit('_', 1)[-1].lower()
+    if suffix in ('fail', 'failed'):
+        return 'fail'
+    if suffix in ('done', 'pass', 'skip', 'start'):
+        return suffix
+    return 'unknown'
+
+
 @app.get("/api/feed")
-def feed():
+def feed(role: Optional[str] = None, status: Optional[str] = None):
+    status_lower = status.lower() if status else None
+    if status_lower is not None and status_lower not in VALID_FEED_STATUSES:
+        return []
+
+    where_clauses = []
+    params: list = []
+
+    if role:
+        where_clauses.append("lower(role) = lower(?)")
+        params.append(role)
+
+    if status_lower == 'fail':
+        where_clauses.append("(event_type LIKE '%_fail' OR event_type LIKE '%_failed')")
+    elif status_lower:
+        where_clauses.append(f"event_type LIKE '%_{status_lower}'")
+
+    where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+
     conn = get_db()
     rows = conn.execute(
-        """SELECT id, project, role, model, event_type, issue_number, pr_number,
+        f"""SELECT id, project, role, model, event_type, issue_number, pr_number,
                   detail, payload, created_at
-           FROM events ORDER BY id DESC LIMIT 50"""
+           FROM events {where_sql} ORDER BY id DESC LIMIT 50""",
+        params,
     ).fetchall()
     conn.close()
     result = []
@@ -450,6 +483,7 @@ def feed():
         entry = dict(r)
         if entry["payload"]:
             entry["payload"] = json.loads(entry["payload"])
+        entry["status"] = _derive_status(entry["event_type"])
         result.append(entry)
     return result
 
