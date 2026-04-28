@@ -1,12 +1,12 @@
+import json
 import logging
 import sqlite3
-import json
-from datetime import datetime, timezone
 from contextlib import asynccontextmanager
-from typing import Optional, Any
-
+from datetime import datetime, timezone
 from pathlib import Path
-from fastapi import FastAPI, BackgroundTasks, HTTPException
+from typing import Any, Optional
+
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, model_validator
 
@@ -79,8 +79,10 @@ MIGRATIONS = [
         CREATE INDEX IF NOT EXISTS idx_events_project_role ON events (project, role);
         CREATE INDEX IF NOT EXISTS idx_events_event_type ON events (event_type);
         CREATE INDEX IF NOT EXISTS idx_events_created_at ON events (created_at);
-        CREATE INDEX IF NOT EXISTS idx_events_issue_number ON events (project, issue_number) WHERE issue_number IS NOT NULL;
-        CREATE INDEX IF NOT EXISTS idx_events_pr_number ON events (project, pr_number) WHERE pr_number IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_events_issue_number ON events (project, issue_number)
+            WHERE issue_number IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_events_pr_number ON events (project, pr_number)
+            WHERE pr_number IS NOT NULL;
         """,
     ),
     (
@@ -245,7 +247,7 @@ BOUNTY_POINTS = {
 
 def _auto_bounty(conn, data: "ReportPayload", now: str):
     """Auto-insert a verdict when a terminal event is received."""
-    pts = BOUNTY_POINTS.get(data.event_type)
+    pts = BOUNTY_POINTS.get(data.event_type or "")
     if pts is None:
         return
     reason = f"auto: {data.event_type}"
@@ -268,7 +270,8 @@ def _auto_bounty(conn, data: "ReportPayload", now: str):
         )
     else:
         conn.execute(
-            "INSERT INTO scores (project, role, model, total_points, verdict_count, updated_at) VALUES (?, ?, ?, ?, 1, ?)",
+            "INSERT INTO scores (project, role, model, total_points, verdict_count, updated_at)"
+            " VALUES (?, ?, ?, ?, 1, ?)",
             (data.project, data.role, data.model, pts, now),
         )
 
@@ -278,7 +281,8 @@ def _insert_event(data: ReportPayload):
     now = datetime.now(timezone.utc).isoformat()
     conn.execute(
         """INSERT INTO events
-           (project, role, model, event_type, issue_number, pr_number, detail, payload, core_version, loop_id, created_at)
+           (project, role, model, event_type, issue_number, pr_number, detail, payload,
+            core_version, loop_id, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             data.project,
@@ -355,7 +359,8 @@ def _insert_event(data: ReportPayload):
             except Exception:
                 issue_secs = None
             first_pr = conn.execute(
-                "SELECT created_at FROM issue_history WHERE project=? AND issue_number=? AND pr_number IS NOT NULL ORDER BY id ASC LIMIT 1",
+                "SELECT created_at FROM issue_history"
+                " WHERE project=? AND issue_number=? AND pr_number IS NOT NULL ORDER BY id ASC LIMIT 1",
                 (data.project, data.issue_number),
             ).fetchone()
             pr_secs = None
@@ -400,7 +405,8 @@ def _insert_verdict(data: VerdictPayload):
         )
     else:
         conn.execute(
-            "INSERT INTO scores (project, role, model, total_points, verdict_count, updated_at) VALUES (?, ?, ?, ?, 1, ?)",
+            "INSERT INTO scores (project, role, model, total_points, verdict_count, updated_at)"
+            " VALUES (?, ?, ?, ?, 1, ?)",
             (data.project, data.role, data.model, data.points, now),
         )
     conn.commit()
@@ -408,7 +414,8 @@ def _insert_verdict(data: VerdictPayload):
 
 
 SUPPORTED_API_MAJOR = "1"
-MONITOR_VERSION = (Path(__file__).parent / "VERSION").read_text().strip() if (Path(__file__).parent / "VERSION").exists() else "unknown"
+_version_file = Path(__file__).parent / "VERSION"
+MONITOR_VERSION = _version_file.read_text().strip() if _version_file.exists() else "unknown"
 
 
 @app.get("/api/health")
@@ -520,7 +527,12 @@ def history(limit: int = 50, loop_id: Optional[str] = None):
         LEFT JOIN verdicts v ON v.project = d.project AND v.role = d.role
             AND v.reason LIKE '%auto: ' || d.event_type || '%'
             AND v.created_at >= d.created_at
-            AND v.id = (SELECT MIN(v2.id) FROM verdicts v2 WHERE v2.project=d.project AND v2.role=d.role AND v2.created_at >= d.created_at AND v2.reason LIKE '%auto: ' || d.event_type || '%')
+            AND v.id = (
+                SELECT MIN(v2.id) FROM verdicts v2
+                WHERE v2.project=d.project AND v2.role=d.role
+                  AND v2.created_at >= d.created_at
+                  AND v2.reason LIKE '%auto: ' || d.event_type || '%'
+            )
         WHERE (d.event_type LIKE '%_done' OR d.event_type LIKE '%_pass' OR d.event_type LIKE '%_failed')
         {loop_clause}
         ORDER BY d.id DESC
@@ -939,7 +951,7 @@ def get_projects():
     return [{"project": p, "repo": r} for p, r in PROJECTS.items() if p in active]
 
 
-def _percentile_stats(values: list) -> dict:
+def _percentile_stats(values: list) -> Optional[dict]:
     """Return median, P90, sample_size, most_recent for a sorted list of values."""
     n = len(values)
     if n == 0:
