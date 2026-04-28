@@ -24,7 +24,36 @@ def test_report_accepted():
         "event_type": "started",
     })
     assert resp.status_code == 202
-    assert resp.json() == {"status": "accepted"}
+    body = resp.json()
+    assert body["status"] == "accepted"
+    assert "monitor_version" in body
+
+
+def test_report_api_v1_accepted():
+    resp = client.post("/api/report", json={
+        "project": "proj-api",
+        "role": "builder",
+        "event": "started",
+        "api": "1.0",
+    })
+    assert resp.status_code == 202
+    body = resp.json()
+    assert body["status"] == "accepted"
+    assert "monitor_version" in body
+
+
+def test_report_api_v2_rejected_426():
+    resp = client.post("/api/report", json={
+        "project": "proj-api",
+        "role": "builder",
+        "event": "started",
+        "api": "2.0",
+    })
+    assert resp.status_code == 426
+    detail = resp.json()["detail"]
+    assert detail["error"] == "version_unsupported"
+    assert detail["received"] == "2.0"
+    assert "1.x" in detail["supported"][0]
 
 
 def test_verdict_accepted():
