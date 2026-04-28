@@ -107,6 +107,14 @@ def init_db():
         if col not in pr_cols:
             conn.execute(f"ALTER TABLE pipeline_runs ADD COLUMN {col} {defn}")
 
+    conn.executescript("""
+        CREATE INDEX IF NOT EXISTS idx_events_project_role ON events (project, role);
+        CREATE INDEX IF NOT EXISTS idx_events_event_type ON events (event_type);
+        CREATE INDEX IF NOT EXISTS idx_events_created_at ON events (created_at);
+        CREATE INDEX IF NOT EXISTS idx_events_issue_number ON events (project, issue_number) WHERE issue_number IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_events_pr_number ON events (project, pr_number) WHERE pr_number IS NOT NULL;
+    """)
+
     conn.commit()
     conn.close()
 
