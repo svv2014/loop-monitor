@@ -1,20 +1,19 @@
 ---
 name: Feature request
-about: Propose a new capability or improvement for loop-monitor
-labels: enhancement
+about: Propose a new feature or improvement for loop-monitor
+title: "[feat] "
+labels: ""
+assignees: ""
 ---
 
-## Problem / motivation
+## Problem Statement
 
-<!-- What problem does this solve? Why does it matter? -->
+Describe the problem or gap this feature would address.
 
-## Proposed solution
+## Proposed Solution
 
-<!-- What should change? Be as specific as you can. -->
+A clear description of what you'd like to see implemented.
 
-## Alternatives considered
+## Alternatives Considered
 
-## Acceptance criteria
-
-- [ ] 
-- [ ] 
+Any alternative approaches or workarounds you've evaluated.

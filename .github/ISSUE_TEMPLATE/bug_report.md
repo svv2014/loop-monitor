@@ -1,29 +1,32 @@
 ---
 name: Bug report
-about: Report a reproducible defect in loop-monitor
-labels: bug
+about: Report a bug in loop-monitor
+title: "[bug] "
+labels: ""
+assignees: ""
 ---
 
-## What happened
+## Description
 
-<!-- Brief description of the bug. -->
+A clear and concise description of the bug.
 
-## Steps to reproduce
+## Reproduction Steps
 
-1. 
-2. 
-3. 
+1. Go to '...'
+2. Run '...'
+3. See error
 
-## Expected behaviour
+## Expected Behavior
 
-## Actual behaviour
+What you expected to happen.
+
+## Actual Behavior
+
+What actually happened. Include error messages or screenshots if applicable.
 
 ## Environment
 
-- loop-monitor version (`cat VERSION`):
-- Python version:
 - OS:
-
-## Logs / screenshots
-
-<!-- Paste relevant log output here. -->
+- Python version:
+- loop-monitor version (see `VERSION`):
+- Deployment method (launchd / manual):
