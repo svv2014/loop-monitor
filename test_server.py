@@ -285,3 +285,71 @@ def test_health_core_version_counts(isolated_client):
     counts = resp.json()["core_version_counts"]
     assert counts["0.1.0"] == 2
     assert counts["0.2.0"] == 1
+
+
+# ── /api/loops and health loop_ids tests ──
+
+def test_loops_empty_db(isolated_client):
+    resp = isolated_client.get("/api/loops")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_loops_with_data(isolated_client):
+    import sqlite3
+    now = "2026-01-01T00:00:00+00:00"
+    conn = sqlite3.connect(server.DB_PATH)
+    conn.executemany(
+        "INSERT INTO events (project, role, event_type, created_at, loop_id, core_version) VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            ("p", "dev", "dev_done", now, "loop-1", "0.1.0"),
+            ("p", "dev", "dev_done", now, "loop-1", "0.2.0"),
+            ("p", "dev", "dev_done", now, None, "0.1.0"),
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+    resp = isolated_client.get("/api/loops")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 2
+
+    unknown = next(r for r in data if r["loop_id"] == "(unknown)")
+    assert unknown["event_count"] == 1
+    assert unknown["core_versions"] == ["0.1.0"]
+
+    loop1 = next(r for r in data if r["loop_id"] == "loop-1")
+    assert loop1["event_count"] == 2
+    assert sorted(loop1["core_versions"]) == ["0.1.0", "0.2.0"]
+    assert "last_seen" in loop1
+
+
+def test_health_loop_ids_field(isolated_client):
+    import sqlite3
+    now = "2026-01-01T00:00:00+00:00"
+    conn = sqlite3.connect(server.DB_PATH)
+    conn.executemany(
+        "INSERT INTO events (project, role, event_type, created_at, loop_id) VALUES (?, ?, ?, ?, ?)",
+        [
+            ("p", "dev", "dev_done", now, "loop-a"),
+            ("p", "dev", "dev_done", now, None),
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+    resp = isolated_client.get("/api/health")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "loop_ids" in data
+    assert "(unknown)" in data["loop_ids"]
+    assert "loop-a" in data["loop_ids"]
+
+
+def test_health_loop_ids_empty_db(isolated_client):
+    resp = isolated_client.get("/api/health")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "loop_ids" in data
+    assert data["loop_ids"] == []
