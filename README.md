@@ -50,6 +50,80 @@ pip install -r requirements.txt
 
 Open http://127.0.0.1:18792.
 
+## Terminal dashboard
+
+`bin/loop-mon` is a bash-only terminal dashboard that polls the same API as the web UI. No browser, no port-forward, no JS.
+
+**Dependencies:** `curl`, `jq` (no Python, no extra installs).
+
+### Quick start
+
+```bash
+# One snapshot and exit
+./bin/loop-mon
+
+# Refresh every 5 seconds in place (no flicker)
+./bin/loop-mon --watch
+
+# Custom interval
+./bin/loop-mon --watch --interval 10
+
+# Override server URL
+./bin/loop-mon --url http://host:18792
+
+# Pipe-friendly JSON dump
+./bin/loop-mon --json | jq .health
+
+# Plain ASCII (CI / log capture)
+./bin/loop-mon --no-color
+
+# Composable with watch(1)
+watch -n 2 ./bin/loop-mon --no-color
+```
+
+### Options
+
+| Option | Default | Description |
+|---|---|---|
+| `--watch` | off | Refresh in place every `--interval` seconds |
+| `--interval N` | 5 | Refresh interval (requires `--watch`) |
+| `--url URL` | `$LOOP_BOUNTY_URL` or `http://127.0.0.1:18792` | Server URL |
+| `--no-color` | off | Plain ASCII, no ANSI escape codes |
+| `--json` | off | Combined JSON dump, then exit |
+| `--feed-only` | off | Print only the live feed |
+| `--board-only` | off | Print only the leaderboard |
+| `--version` | | Print `loop-mon v<version>` and exit |
+| `-h`, `--help` | | Show help and exit |
+
+### Sample output
+
+```
+LOOP MONITOR · v0.1.1                                   127.0.0.1:18792 · ok
+
+ROLES                              LEADERBOARD
+─────────────────────────────      ──────────────────────────────────
+  Planner    🟢 idle               1. sonnet                    185
+  Builder    🔵 busy  #35          2. opus                      120
+  Reviewer   🟢 idle               3. haiku                      12
+  Tester     🟢 idle
+
+LIVE FEED                                                 (last 10)
+─────────────────────────────────────────────────────────────────────
+  07:22  🏆 merge_done    loop          PR #4    +13 bounty
+  07:21  ✅ qa_pass       loop          PR #4
+
+JUDGE VERDICTS                                            (last 3)
+─────────────────────────────────────────────────────────────────────
+  PR #4      "+13 bounty"
+```
+
+### Global install (optional)
+
+```bash
+ln -s "$(pwd)/bin/loop-mon" /usr/local/bin/loop-mon
+loop-mon --watch
+```
+
 ## Wire it to Loop
 
 In your Loop core's `loop.env`:

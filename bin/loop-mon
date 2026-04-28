@@ -1,0 +1,466 @@
+#!/usr/bin/env bash
+# bin/loop-mon — terminal dashboard for loop-monitor
+# Deps: curl, jq
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+MONITOR_VERSION="$(cat "${REPO_ROOT}/VERSION" 2>/dev/null || echo "unknown")"
+
+# ---------------------------------------------------------------------------
+# Defaults
+# ---------------------------------------------------------------------------
+BASE_URL="${LOOP_BOUNTY_URL:-http://127.0.0.1:18792}"
+WATCH=false
+INTERVAL=5
+NO_COLOR=false
+JSON_MODE=false
+FEED_ONLY=false
+BOARD_ONLY=false
+
+# ---------------------------------------------------------------------------
+# Args
+# ---------------------------------------------------------------------------
+usage() {
+    cat <<EOF
+Usage: loop-mon [OPTIONS]
+
+Terminal dashboard for loop-monitor. Polls the versioned API.
+
+Options:
+  --watch                 Refresh every INTERVAL seconds in place
+  --interval N            Refresh interval in seconds (default: 5, requires --watch)
+  --url URL               Server URL (default: \$LOOP_BOUNTY_URL or http://127.0.0.1:18792)
+  --no-color              Plain ASCII output (no ANSI escape codes)
+  --json                  Combined JSON dump (pipe-friendly), then exit
+  --feed-only             Print only the live feed
+  --board-only            Print only the leaderboard
+  --version               Print version and exit
+  -h, --help              Show this help and exit
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --watch)       WATCH=true ;;
+        --interval)    INTERVAL="${2:?--interval requires a value}"; shift ;;
+        --interval=*)  INTERVAL="${1#*=}" ;;
+        --url)         BASE_URL="${2:?--url requires a value}"; shift ;;
+        --url=*)       BASE_URL="${1#*=}" ;;
+        --no-color)    NO_COLOR=true ;;
+        --json)        JSON_MODE=true ;;
+        --feed-only)   FEED_ONLY=true ;;
+        --board-only)  BOARD_ONLY=true ;;
+        --version)     echo "loop-mon v${MONITOR_VERSION}"; exit 0 ;;
+        -h|--help)     usage; exit 0 ;;
+        *)             echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
+    esac
+    shift
+done
+
+# ---------------------------------------------------------------------------
+# Color helpers
+# ---------------------------------------------------------------------------
+if [[ "${NO_COLOR}" == true ]] || [[ ! -t 1 && "${WATCH}" == false ]]; then
+    _c() { :; }
+    RESET=""
+    BOLD=""
+    DIM=""
+    GREEN=""
+    BLUE=""
+    YELLOW=""
+    RED=""
+    CYAN=""
+else
+    _c() { printf '%s' "$1"; }
+    RESET="\033[0m"
+    BOLD="\033[1m"
+    DIM="\033[2m"
+    GREEN="\033[32m"
+    BLUE="\033[34m"
+    YELLOW="\033[33m"
+    RED="\033[31m"
+    CYAN="\033[36m"
+fi
+
+color() {
+    # color <code> <text>
+    if [[ "${NO_COLOR}" == true ]]; then
+        printf '%s' "$2"
+    else
+        printf "%b%s%b" "$1" "$2" "${RESET}"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Terminal width
+# ---------------------------------------------------------------------------
+COLS=80
+if command -v tput &>/dev/null && [[ -t 1 ]]; then
+    COLS=$(tput cols 2>/dev/null || echo 80)
+fi
+[[ "${COLS}" -lt 40 ]] && COLS=80
+
+# ---------------------------------------------------------------------------
+# HTTP fetch helpers
+# ---------------------------------------------------------------------------
+_fetch() {
+    # _fetch <path> — returns JSON body or exits 1
+    local path="$1"
+    local out
+    out=$(curl -sf --max-time 5 "${BASE_URL}${path}" 2>/dev/null) || return 1
+    printf '%s' "$out"
+}
+
+fetch_health() { _fetch "/api/health"; }
+fetch_board()  { _fetch "/api/board"; }
+fetch_feed()   { _fetch "/api/feed"; }
+fetch_status() { _fetch "/api/status"; }
+
+# ---------------------------------------------------------------------------
+# JSON mode
+# ---------------------------------------------------------------------------
+json_dump() {
+    local health board feed status_data
+    health=$(fetch_health)  || health='null'
+    board=$(fetch_board)    || board='null'
+    feed=$(fetch_feed)      || feed='null'
+    status_data=$(fetch_status) || status_data='null'
+    jq -n \
+        --argjson health     "${health}" \
+        --argjson board      "${board}" \
+        --argjson feed       "${feed}" \
+        --argjson status     "${status_data}" \
+        '{health:$health,board:$board,feed:$feed,status:$status}'
+}
+
+# ---------------------------------------------------------------------------
+# Rendering helpers
+# ---------------------------------------------------------------------------
+_hrule() {
+    local width="${1:-${COLS}}"
+    local char="${2:-─}"
+    printf '%*s' "${width}" '' | tr ' ' "${char}"
+}
+
+_trunc() {
+    # _trunc <string> <max_width>
+    local s="$1" w="$2"
+    if [[ ${#s} -gt ${w} ]]; then
+        printf '%s' "${s:0:$((w-1))}…"
+    else
+        printf '%s' "$s"
+    fi
+}
+
+_pad_right() {
+    # _pad_right <string> <width>
+    printf '%-*s' "$2" "$1"
+}
+
+_event_icon() {
+    local ev="$1"
+    if [[ "${NO_COLOR}" == true ]]; then
+        case "${ev}" in
+            *_done|*_pass) printf '[ok]' ;;
+            *_start)       printf '[>>]' ;;
+            *_failed)      printf '[!!]' ;;
+            *)             printf '[--]' ;;
+        esac
+    else
+        case "${ev}" in
+            merge_done)   printf '🏆' ;;
+            *_done|*_pass) printf '✅' ;;
+            *_start)       printf '🔵' ;;
+            *_failed)      printf '❌' ;;
+            *)             printf '🔵' ;;
+        esac
+    fi
+}
+
+_role_badge() {
+    local ev="$1"
+    if [[ "${NO_COLOR}" == true ]]; then
+        case "${ev}" in
+            *_start)        printf '[busy]' ;;
+            *_done|*_pass)  printf '[idle]' ;;
+            *_failed)       printf '[fail]' ;;
+            *)              printf '[....] ' ;;
+        esac
+    else
+        case "${ev}" in
+            *_start)        color "${BLUE}"  "🔵 busy" ;;
+            *_done|*_pass)  color "${GREEN}" "🟢 idle" ;;
+            *_failed)       color "${RED}"   "🔴 fail" ;;
+            qa_*)           color "${YELLOW}" "🟡 qa  " ;;
+            *)              color "${DIM}"   "⚪ ---  " ;;
+        esac
+    fi
+}
+
+_fmt_ts() {
+    # _fmt_ts <iso_timestamp> — returns HH:MM
+    local ts="$1"
+    printf '%s' "${ts:11:5}"
+}
+
+# ---------------------------------------------------------------------------
+# Render sections
+# ---------------------------------------------------------------------------
+render_header() {
+    local version="$1" server_url="$2" server_status="$3"
+    local title="LOOP MONITOR · v${version}"
+    local right="${server_url} · ${server_status}"
+    local gap=$(( COLS - ${#title} - ${#right} ))
+    [[ ${gap} -lt 1 ]] && gap=1
+    if [[ "${NO_COLOR}" == true ]]; then
+        printf '%s%*s%s\n' "${title}" "${gap}" '' "${right}"
+    else
+        printf '%b%s%b%*s%b%s%b\n' \
+            "${BOLD}" "${title}" "${RESET}" \
+            "${gap}" '' \
+            "${CYAN}" "${right}" "${RESET}"
+    fi
+    printf '\n'
+}
+
+render_roles() {
+    # status_json: array of {project, role, event_type, issue_number, pr_number, ...}
+    local status_json="$1"
+    local board_json="$2"
+
+    # Roles we care about in order
+    local roles=("planner" "builder" "reviewer" "tester")
+
+    # Left column: roles + status
+    # Right column: leaderboard
+    local left_w=$(( (COLS / 2) - 2 ))
+    local right_w=$(( COLS - left_w - 3 ))
+
+    local left_hdr right_hdr
+    left_hdr="ROLES"
+    right_hdr="LEADERBOARD"
+
+    # Print headers
+    printf '%-*s   %s\n' "${left_w}" "${left_hdr}" "${right_hdr}"
+    printf '%-*s   %s\n' "${left_w}" "$(_hrule "${left_w}" "─")" "$(_hrule "${right_w}" "─")"
+
+    # Build board rows
+    local board_lines=()
+    local rank=1
+    while IFS= read -r line; do
+        local model points
+        model=$(printf '%s' "${line}" | jq -r '.model // .role // "?"')
+        points=$(printf '%s' "${line}" | jq -r '.total_points // 0')
+        board_lines+=("$(printf '%d. %-20s %5d' "${rank}" "${model}" "${points}")")
+        (( rank++ )) || true
+    done < <(printf '%s' "${board_json}" | jq -c '.[] | select(.total_points > 0)' 2>/dev/null | head -10)
+
+    local max_rows=$(( ${#roles[@]} > ${#board_lines[@]} ? ${#roles[@]} : ${#board_lines[@]} ))
+    local i
+    for (( i=0; i<max_rows; i++ )); do
+        local left_cell="" right_cell=""
+
+        # Left: role row
+        if [[ ${i} -lt ${#roles[@]} ]]; then
+            local role="${roles[$i]}"
+            local role_cap
+            role_cap="$(tr '[:lower:]' '[:upper:]' <<< "${role:0:1}")${role:1}"
+
+            # Find latest event for this role
+            local ev_type ref_num
+            ev_type=$(printf '%s' "${status_json}" | jq -r \
+                --arg r "${role}" \
+                '[.[] | select(.role==$r)] | if length > 0 then .[0].event_type else "idle" end' \
+                2>/dev/null || echo "idle")
+            ref_num=$(printf '%s' "${status_json}" | jq -r \
+                --arg r "${role}" \
+                '[.[] | select(.role==$r)] | if length > 0 then (.[0].pr_number // .[0].issue_number // "") else "" end' \
+                2>/dev/null || echo "")
+
+            local badge
+            badge=$(_role_badge "${ev_type}")
+            local ref_str=""
+            [[ -n "${ref_num}" && "${ref_num}" != "null" ]] && ref_str="#${ref_num}"
+
+            if [[ "${NO_COLOR}" == true ]]; then
+                left_cell="$(printf '  %-10s %-10s %s' "${role_cap}" "${badge}" "${ref_str}")"
+            else
+                left_cell="$(printf '  %-10s %s %s' "${role_cap}" "${badge}" "${ref_str}")"
+            fi
+        fi
+
+        # Right: board row
+        if [[ ${i} -lt ${#board_lines[@]} ]]; then
+            right_cell="${board_lines[$i]}"
+        fi
+
+        printf '%-*s   %s\n' "${left_w}" "$(_trunc "${left_cell}" "${left_w}")" "${right_cell}"
+    done
+    printf '\n'
+}
+
+render_feed() {
+    local feed_json="$1"
+    local limit=10
+    local label="LIVE FEED"
+    local right_label="(last ${limit})"
+    local gap=$(( COLS - ${#label} - ${#right_label} ))
+    [[ ${gap} -lt 1 ]] && gap=1
+
+    printf '%s%*s%s\n' "${label}" "${gap}" '' "${right_label}"
+    printf '%s\n' "$(_hrule "${COLS}" "─")"
+
+    local count=0
+    while IFS= read -r line; do
+        [[ ${count} -ge ${limit} ]] && break
+        local ts ev_type role proj issue_num pr_num detail
+        ts=$(printf '%s' "${line}" | jq -r '.created_at // ""')
+        ev_type=$(printf '%s' "${line}" | jq -r '.event_type // "unknown"')
+        role=$(printf '%s' "${line}" | jq -r '.role // ""')
+        proj=$(printf '%s' "${line}" | jq -r '.project // ""')
+        issue_num=$(printf '%s' "${line}" | jq -r '.issue_number // ""')
+        pr_num=$(printf '%s' "${line}" | jq -r '.pr_number // ""')
+        detail=$(printf '%s' "${line}" | jq -r '.detail // ""')
+
+        local icon
+        icon=$(_event_icon "${ev_type}")
+        local hm
+        hm=$(_fmt_ts "${ts}")
+
+        local ref=""
+        [[ -n "${pr_num}" && "${pr_num}" != "null" ]] && ref="PR #${pr_num}"
+        [[ -z "${ref}" && -n "${issue_num}" && "${issue_num}" != "null" ]] && ref="#${issue_num}"
+
+        local detail_str=""
+        [[ -n "${detail}" && "${detail}" != "null" ]] && detail_str="${detail}"
+
+        local line_str
+        if [[ "${NO_COLOR}" == true ]]; then
+            line_str="  ${hm}  ${icon} ${ev_type}   ${proj}   ${ref}   ${detail_str}"
+        else
+            line_str="$(printf '  %s  %s %-16s %-10s %-10s %s' \
+                "${hm}" "${icon}" "${ev_type}" "${proj}" "${ref}" "${detail_str}")"
+        fi
+        printf '%s\n' "$(_trunc "${line_str}" "${COLS}")"
+        (( count++ )) || true
+    done < <(printf '%s' "${feed_json}" | jq -c '.[]' 2>/dev/null)
+
+    if [[ ${count} -eq 0 ]]; then
+        printf '  (no events yet)\n'
+    fi
+    printf '\n'
+}
+
+render_verdicts() {
+    local feed_json="$1"
+    local limit=3
+    local label="JUDGE VERDICTS"
+    local right_label="(last ${limit})"
+    local gap=$(( COLS - ${#label} - ${#right_label} ))
+    [[ ${gap} -lt 1 ]] && gap=1
+
+    printf '%s%*s%s\n' "${label}" "${gap}" '' "${right_label}"
+    printf '%s\n' "$(_hrule "${COLS}" "─")"
+
+    # Extract merge_done events with detail (bounty verdicts carry points in detail)
+    local count=0
+    while IFS= read -r line; do
+        [[ ${count} -ge ${limit} ]] && break
+        local pr_num detail
+        pr_num=$(printf '%s' "${line}" | jq -r '.pr_number // ""')
+        detail=$(printf '%s' "${line}" | jq -r '.detail // ""')
+        [[ -z "${detail}" || "${detail}" == "null" ]] && continue
+
+        local ref=""
+        [[ -n "${pr_num}" && "${pr_num}" != "null" ]] && ref="PR #${pr_num}"
+
+        local verdict_str
+        verdict_str="$(printf '  %-10s  "%s"' "${ref}" "${detail}")"
+        printf '%s\n' "$(_trunc "${verdict_str}" "${COLS}")"
+        (( count++ )) || true
+    done < <(printf '%s' "${feed_json}" | jq -c '[.[] | select(.event_type=="merge_done")] | .[]' 2>/dev/null)
+
+    if [[ ${count} -eq 0 ]]; then
+        printf '  (no verdicts yet)\n'
+    fi
+    printf '\n'
+}
+
+# ---------------------------------------------------------------------------
+# Snapshot render
+# ---------------------------------------------------------------------------
+render_snapshot() {
+    local health_json board_json feed_json status_json
+    health_json=$(fetch_health)  || { printf 'loop-mon: server unreachable at %s\n' "${BASE_URL}" >&2; return 1; }
+    board_json=$(fetch_board)    || board_json='[]'
+    feed_json=$(fetch_feed)      || feed_json='[]'
+    status_json=$(fetch_status)  || status_json='[]'
+
+    local server_version server_status
+    server_version=$(printf '%s' "${health_json}" | jq -r '.monitor_version // "?"')
+    server_status=$(printf '%s' "${health_json}" | jq -r '.status // "?"')
+
+    local url_display="${BASE_URL#http://}"
+    url_display="${url_display#https://}"
+
+    if [[ "${FEED_ONLY}" == true ]]; then
+        render_feed "${feed_json}"
+        return
+    fi
+    if [[ "${BOARD_ONLY}" == true ]]; then
+        printf 'LEADERBOARD\n'
+        printf '%s\n' "$(_hrule "${COLS}" "─")"
+        local rank=1
+        while IFS= read -r line; do
+            local model points
+            model=$(printf '%s' "${line}" | jq -r '.model // .role // "?"')
+            points=$(printf '%s' "${line}" | jq -r '.total_points // 0')
+            printf '%d. %-24s %5d\n' "${rank}" "${model}" "${points}"
+            (( rank++ )) || true
+        done < <(printf '%s' "${board_json}" | jq -c '.[] | select(.total_points > 0)' 2>/dev/null)
+        return
+    fi
+
+    render_header "${server_version}" "${url_display}" "${server_status}"
+    render_roles  "${status_json}" "${board_json}"
+    render_feed   "${feed_json}"
+    render_verdicts "${feed_json}"
+}
+
+# ---------------------------------------------------------------------------
+# Watch mode
+# ---------------------------------------------------------------------------
+watch_loop() {
+    # Use ANSI cursor home + clear-to-end-of-screen instead of clear
+    # \033[H = cursor home, \033[J = erase to end of screen
+    local CLEAR_SEQ="\033[H\033[J"
+    while true; do
+        if [[ "${NO_COLOR}" == false ]]; then
+            printf '%b' "${CLEAR_SEQ}"
+        fi
+        if ! render_snapshot 2>/dev/null; then
+            if [[ "${NO_COLOR}" == true ]]; then
+                printf '[WARN] Server unreachable at %s — retrying in %ds...\n' "${BASE_URL}" "${INTERVAL}"
+            else
+                color "${YELLOW}" "[WARN] Server unreachable at ${BASE_URL} — retrying in ${INTERVAL}s..."
+                printf '\n'
+            fi
+        fi
+        sleep "${INTERVAL}"
+    done
+}
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+if [[ "${JSON_MODE}" == true ]]; then
+    json_dump
+    exit 0
+fi
+
+if [[ "${WATCH}" == true ]]; then
+    watch_loop
+else
+    render_snapshot || exit 1
+fi
