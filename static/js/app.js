@@ -45,6 +45,10 @@ initRunsPanel();
 initGraphTooltip();
 initVersionBadge();
 initLoopSelector(fetchAll);
+
+document.getElementById('feed-role-filter').addEventListener('change', fetchAll);
+document.getElementById('feed-status-filter').addEventListener('change', fetchAll);
+
 fetchAll();
 setInterval(fetchAll, 5000);
 fetchClaudeUsage();

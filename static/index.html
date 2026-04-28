@@ -83,7 +83,24 @@
 
   <div id="bottom-section">
     <div class="scroll-panel">
-      <div class="scroll-panel-header">Activity Feed</div>
+      <div class="scroll-panel-header" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <span>Activity Feed</span>
+        <div style="display:flex;gap:6px;">
+          <select id="feed-role-filter" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:0.68rem;padding:2px 6px;border-radius:4px;cursor:pointer;">
+            <option value="">All Roles</option>
+            <option value="dev">dev</option>
+            <option value="review">review</option>
+            <option value="qa">qa</option>
+          </select>
+          <select id="feed-status-filter" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:0.68rem;padding:2px 6px;border-radius:4px;cursor:pointer;">
+            <option value="">All Status</option>
+            <option value="done">done</option>
+            <option value="fail">fail</option>
+            <option value="pass">pass</option>
+            <option value="skip">skip</option>
+          </select>
+        </div>
+      </div>
       <div class="scroll-inner" id="feed-list"></div>
     </div>
     <div class="scroll-panel">
