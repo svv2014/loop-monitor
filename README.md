@@ -93,9 +93,36 @@ this on every pipeline state change.
 ```json
 {
   "status": "ok",
-  "monitor_version": "0.1.0",
-  "supported_bounty_api": "1.x"
+  "monitor_version": "0.1.1",
+  "supported_bounty_api": "1.x",
+  "core_version_counts": {"0.1.0": 42}
 }
+```
+
+`core_version_counts` — map of Loop core version → event count, built from ingested events.
+
+## Scripts
+
+### `scripts/release.sh patch|minor|major`
+
+Bumps VERSION, updates CHANGELOG.md, commits, tags, and creates a GitHub release with extracted changelog notes.
+
+```bash
+./scripts/release.sh patch   # 0.1.1 → 0.1.2
+./scripts/release.sh minor   # 0.1.1 → 0.2.0
+./scripts/release.sh major   # 0.1.1 → 1.0.0
+```
+
+Requires a clean working tree and `gh` CLI authenticated.
+
+### `scripts/check-version.sh`
+
+Compares the Loop core version in `$LOOP_ROOT/VERSION` against the latest GitHub release of `svv2014/loop`. Prints a notice if Loop core has a newer release. Throttled to once per hour via `/tmp/loop-version-last-notified`.
+
+Wire it into your Loop core startup or a cron job:
+
+```bash
+LOOP_ROOT=/path/to/loop ./scripts/check-version.sh
 ```
 
 ## Security
