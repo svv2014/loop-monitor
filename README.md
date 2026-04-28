@@ -3,6 +3,8 @@
 > Live agent status, bounty leaderboard, AI judge verdicts, PR scorecards.
 > The visibility layer for the [Loop](https://github.com/svv2014/loop) pipeline.
 
+> **Renamed from bounty-monitor** — `loop-monitor` is the direct successor to [`svv2014/bounty-monitor`](https://github.com/svv2014/bounty-monitor) (now archived). The API, event schema, and port (18792) are identical — no migration needed.
+
 ## What it shows
 
 ```
