@@ -486,6 +486,99 @@
     }
     a.gh-link:hover { text-decoration: underline; }
 
+    /* ── Project link in card ── */
+    .project-name-link {
+      color: var(--text);
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .project-name-link:hover { color: var(--accent2); text-decoration: underline; }
+
+    /* ── In-flight pulse badge ── */
+    .pulse-badge {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      animation: pulse 1.5s ease-in-out infinite;
+      vertical-align: middle;
+      margin-right: 4px;
+    }
+
+    /* ── Project runs panel ── */
+    #project-panel {
+      display: none;
+      max-width: 1400px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    #project-panel.active { display: block; }
+
+    .project-panel-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+
+    .project-panel-back {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 0.82rem;
+      padding: 4px 10px;
+      line-height: 1.4;
+    }
+    .project-panel-back:hover { color: var(--text); border-color: var(--muted); }
+
+    .runs-table-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .runs-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+
+    .runs-table th {
+      text-align: left;
+      padding: 10px 12px;
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .runs-table td {
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+
+    .runs-table tr:last-child td { border-bottom: none; }
+    .runs-table tbody tr { cursor: pointer; }
+    .runs-table tbody tr:hover td { background: var(--surface2); }
+
+    .outcome-badge {
+      font-size: 0.68rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      padding: 2px 7px;
+      border-radius: 4px;
+    }
+    .outcome-badge.clean  { background: #0d2b1f; color: var(--green); }
+    .outcome-badge.fail   { background: #2b0d0d; color: var(--red); }
+    .outcome-badge.null   { background: transparent; }
+
     /* ── Timeline links (open drawer) ── */
     .timeline-link {
       color: var(--accent2);
@@ -709,6 +802,30 @@
         <div class="empty-state">Loading…</div>
       </div>
     </div>
+  </div>
+</section>
+
+<section id="project-panel">
+  <div class="project-panel-header">
+    <button class="project-panel-back" id="project-panel-back">← Back</button>
+    <span id="project-panel-title" class="section-title" style="margin-bottom:0;font-size:0.85rem"></span>
+  </div>
+  <div class="runs-table-wrap">
+    <table class="runs-table">
+      <thead>
+        <tr>
+          <th>Issue</th>
+          <th>PR</th>
+          <th>Outcome</th>
+          <th>Duration</th>
+          <th>Rework</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody id="runs-table-body">
+        <tr><td colspan="6" class="empty-state">Loading…</td></tr>
+      </tbody>
+    </table>
   </div>
 </section>
 
@@ -949,7 +1066,7 @@
       card.className = `agent-card ${status}`;
       card.innerHTML = `
         <div class="agent-header">
-          <span class="agent-role">📦 ${escHtml(proj)}</span>
+          <span class="agent-role">📦 <a class="project-name-link" href="#project/${encodeURIComponent(proj)}" data-project="${escHtml(proj)}">${escHtml(proj)}</a></span>
           <span class="status-badge ${status}">${status}</span>
         </div>
         <div class="agent-task">${isActive ? activeLines : lastLine || '<span style="color:var(--muted)">No activity yet</span>'}</div>
@@ -1265,10 +1382,80 @@
   function closeDrawer() {
     drawerEl.classList.remove('open');
     backdropEl.classList.remove('open');
-    if (window.location.hash) {
+    const h = window.location.hash;
+    if (h && !h.startsWith('#project/')) {
       history.pushState(null, '', window.location.pathname + window.location.search);
     }
   }
+
+  // ── Project runs panel ──
+  const projectPanel   = document.getElementById('project-panel');
+  const mainEl         = document.querySelector('main');
+  const chartsEl       = document.getElementById('charts-section');
+
+  function showProjectPanel(project) {
+    document.getElementById('project-panel-title').textContent = project + ' — Run History';
+    document.getElementById('runs-table-body').innerHTML =
+      '<tr><td colspan="6" class="empty-state">Loading…</td></tr>';
+
+    mainEl.style.display   = 'none';
+    chartsEl.style.display = 'none';
+    projectPanel.classList.add('active');
+
+    history.pushState(null, '', '#project/' + encodeURIComponent(project));
+
+    fetch('/api/runs/' + encodeURIComponent(project))
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(rows => renderRunsTable(project, rows))
+      .catch(() => {
+        document.getElementById('runs-table-body').innerHTML =
+          '<tr><td colspan="6" style="color:var(--red);text-align:center;padding:16px">Failed to load runs</td></tr>';
+      });
+  }
+
+  function showHome() {
+    projectPanel.classList.remove('active');
+    mainEl.style.display   = '';
+    chartsEl.style.display = '';
+  }
+
+  function renderRunsTable(project, rows) {
+    const tbody = document.getElementById('runs-table-body');
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No runs yet for this project</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(r => {
+      const issueCell = r.issue_number != null ? ghLink(project, r.issue_number, 'issue') : '—';
+      const prCell    = r.pr_number    != null ? ghLink(project, r.pr_number,    'pull')  : '—';
+      const dur       = r.total_duration_seconds != null ? fmtDur(r.total_duration_seconds) : '—';
+      const rework    = r.rework_count != null ? r.rework_count : 0;
+      const created   = r.created_at ? new Date(r.created_at).toLocaleDateString() : '—';
+
+      let outcomeHtml;
+      if (r.outcome == null) {
+        outcomeHtml = '<span class="outcome-badge null"><span class="pulse-badge"></span>in-flight</span>';
+      } else if ((r.outcome || '').toLowerCase() === 'clean') {
+        outcomeHtml = `<span class="outcome-badge clean">${escHtml(r.outcome)}</span>`;
+      } else {
+        outcomeHtml = `<span class="outcome-badge fail">${escHtml(r.outcome)}</span>`;
+      }
+
+      return `<tr data-project="${escHtml(project)}" data-issue="${r.issue_number != null ? r.issue_number : ''}" data-pr="${r.pr_number != null ? r.pr_number : ''}">
+        <td>${issueCell}</td>
+        <td>${prCell}</td>
+        <td>${outcomeHtml}</td>
+        <td style="color:var(--muted);font-size:0.78rem">${escHtml(dur)}</td>
+        <td style="color:var(--muted);font-size:0.78rem">${rework}</td>
+        <td style="color:var(--muted);font-size:0.75rem">${escHtml(created)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  document.getElementById('project-panel-back').addEventListener('click', () => {
+    history.pushState(null, '', window.location.pathname + window.location.search);
+    showHome();
+  });
 
   function populateDrawer(data, project, issue, pr) {
     const sum      = data.summary || {};
@@ -1331,7 +1518,7 @@
     }
   }
 
-  // Click delegation for .timeline-link
+  // Click delegation for .timeline-link, .project-name-link, and runs table rows
   document.addEventListener('click', e => {
     const link = e.target.closest('.timeline-link');
     if (link) {
@@ -1341,6 +1528,22 @@
         ? parseInt(link.dataset.issue, 10) : null;
       const pr      = link.dataset.pr    != null && link.dataset.pr    !== ''
         ? parseInt(link.dataset.pr, 10)    : null;
+      openDrawer(project, issue, pr);
+      return;
+    }
+
+    const projLink = e.target.closest('.project-name-link');
+    if (projLink) {
+      e.preventDefault();
+      showProjectPanel(projLink.dataset.project);
+      return;
+    }
+
+    const runRow = e.target.closest('#runs-table-body tr[data-project]');
+    if (runRow && !e.target.closest('a')) {
+      const project = runRow.dataset.project;
+      const issue   = runRow.dataset.issue !== '' ? parseInt(runRow.dataset.issue, 10) : null;
+      const pr      = runRow.dataset.pr    !== '' ? parseInt(runRow.dataset.pr,    10) : null;
       openDrawer(project, issue, pr);
     }
   });
@@ -1355,13 +1558,19 @@
 
   // Hash-based navigation
   function checkHash() {
-    const m = window.location.hash.match(/^#issue\/([^/]+)\/(\d+)$/);
-    if (m) openDrawer(decodeURIComponent(m[1]), parseInt(m[2], 10), null);
+    const h = window.location.hash;
+    const mIssue   = h.match(/^#issue\/([^/]+)\/(\d+)$/);
+    const mProject = h.match(/^#project\/([^/]+)$/);
+    if (mIssue)   openDrawer(decodeURIComponent(mIssue[1]), parseInt(mIssue[2], 10), null);
+    else if (mProject) showProjectPanel(decodeURIComponent(mProject[1]));
   }
   window.addEventListener('hashchange', () => {
-    const m = window.location.hash.match(/^#issue\/([^/]+)\/(\d+)$/);
-    if (m) openDrawer(decodeURIComponent(m[1]), parseInt(m[2], 10), null);
-    else if (!window.location.hash) closeDrawer();
+    const h = window.location.hash;
+    const mIssue   = h.match(/^#issue\/([^/]+)\/(\d+)$/);
+    const mProject = h.match(/^#project\/([^/]+)$/);
+    if (mIssue)        openDrawer(decodeURIComponent(mIssue[1]), parseInt(mIssue[2], 10), null);
+    else if (mProject) showProjectPanel(decodeURIComponent(mProject[1]));
+    else { closeDrawer(); showHome(); }
   });
 
   // ── Init ──
