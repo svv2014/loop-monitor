@@ -621,6 +621,52 @@
     .outcome-badge.fail   { background: #2b0d0d; color: var(--red); }
     .outcome-badge.null   { background: transparent; }
 
+    /* ── Expand toggle ── */
+    .expand-toggle {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 0.7rem;
+      padding: 2px 5px;
+      line-height: 1;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .expand-toggle:hover { color: var(--text); border-color: var(--muted); }
+    .expand-toggle.open  { color: var(--accent2); border-color: var(--accent2); }
+
+    /* ── Inline stage breakdown ── */
+    .breakdown-row td { padding: 0; border-bottom: 1px solid var(--border); }
+    .breakdown-inner {
+      padding: 10px 16px 10px 44px;
+      background: var(--bg);
+    }
+    .breakdown-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.75rem;
+    }
+    .breakdown-table th {
+      text-align: left;
+      padding: 4px 8px;
+      color: var(--muted);
+      font-size: 0.62rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--border);
+    }
+    .breakdown-table td {
+      padding: 5px 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .breakdown-table tr:last-child td { border-bottom: none; }
+    .breakdown-table .bd-role { color: var(--accent); font-weight: 600; }
+    .breakdown-table .bd-dur  { color: var(--accent2); font-weight: 600; }
+    .breakdown-table .bd-cum  { color: var(--muted); }
+    .breakdown-table .bd-foot td { color: var(--text); font-weight: 600; border-top: 1px solid var(--border); padding-top: 6px; }
+
     /* ── Timeline links (open drawer) ── */
     .timeline-link {
       color: var(--accent2);
@@ -887,6 +933,7 @@
     <table class="runs-table">
       <thead>
         <tr>
+          <th></th>
           <th>Issue</th>
           <th>PR</th>
           <th>Outcome</th>
@@ -896,7 +943,7 @@
         </tr>
       </thead>
       <tbody id="runs-table-body">
-        <tr><td colspan="6" class="empty-state">Loading…</td></tr>
+        <tr><td colspan="7" class="empty-state">Loading…</td></tr>
       </tbody>
     </table>
   </div>
@@ -1608,10 +1655,13 @@
     eventsGraphEl.style.display = eventsGraphVisible ? '' : 'none';
   }
 
+  // ── Timeline cache keyed by "project|issue_number" ──
+  const timelineCache = {};
+
   function renderRunsTable(project, rows) {
     const tbody = document.getElementById('runs-table-body');
     if (!rows.length) {
-      tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No runs yet for this project</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No runs yet for this project</td></tr>';
       return;
     }
     tbody.innerHTML = rows.map(r => {
@@ -1620,6 +1670,9 @@
       const dur       = r.total_duration_seconds != null ? fmtDur(r.total_duration_seconds) : '—';
       const rework    = r.rework_count != null ? r.rework_count : 0;
       const created   = r.created_at ? new Date(r.created_at).toLocaleDateString() : '—';
+      const issueAttr = r.issue_number != null ? r.issue_number : '';
+      const prAttr    = r.pr_number    != null ? r.pr_number    : '';
+      const canExpand = r.issue_number != null;
 
       let outcomeHtml;
       if (r.outcome == null) {
@@ -1630,7 +1683,12 @@
         outcomeHtml = `<span class="outcome-badge fail">${escHtml(r.outcome)}</span>`;
       }
 
-      return `<tr data-project="${escHtml(project)}" data-issue="${r.issue_number != null ? r.issue_number : ''}" data-pr="${r.pr_number != null ? r.pr_number : ''}">
+      const toggleBtn = canExpand
+        ? `<button class="expand-toggle" data-project="${escHtml(project)}" data-issue="${issueAttr}" aria-label="Expand stage breakdown">▶</button>`
+        : '';
+
+      return `<tr data-project="${escHtml(project)}" data-issue="${issueAttr}" data-pr="${prAttr}">
+        <td style="width:32px">${toggleBtn}</td>
         <td>${issueCell}</td>
         <td>${prCell}</td>
         <td>${outcomeHtml}</td>
@@ -1639,6 +1697,85 @@
         <td style="color:var(--muted);font-size:0.75rem">${escHtml(created)}</td>
       </tr>`;
     }).join('');
+  }
+
+  function toggleExpandRow(project, issueNumber, btn) {
+    const runRow = btn.closest('tr');
+    const next   = runRow.nextElementSibling;
+    const isOpen = btn.classList.contains('open');
+
+    if (isOpen) {
+      btn.classList.remove('open');
+      btn.textContent = '▶';
+      if (next && next.classList.contains('breakdown-row')) next.remove();
+      return;
+    }
+
+    const cacheKey = `${project}|${issueNumber}`;
+    if (timelineCache[cacheKey]) {
+      insertBreakdownRow(runRow, timelineCache[cacheKey]);
+      btn.classList.add('open');
+      btn.textContent = '▼';
+      return;
+    }
+
+    btn.textContent = '…';
+    fetch(`/api/stats/timeline/${encodeURIComponent(project)}/${issueNumber}`)
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(data => {
+        timelineCache[cacheKey] = data;
+        insertBreakdownRow(runRow, data);
+        btn.classList.add('open');
+        btn.textContent = '▼';
+      })
+      .catch(() => {
+        btn.textContent = '▶';
+        btn.title = 'Failed to load timeline';
+      });
+  }
+
+  function insertBreakdownRow(runRow, data) {
+    const events       = data.events || [];
+    const totalElapsed = data.total_elapsed_seconds != null
+      ? data.total_elapsed_seconds
+      : (data.summary && data.summary.total_duration_seconds != null
+          ? data.summary.total_duration_seconds : null);
+
+    let runningCum = 0;
+    const rowsHtml = events.map(e => {
+      const role   = (e.role || '').charAt(0).toUpperCase() + (e.role || '').slice(1);
+      const status = e.status || '—';
+      const dur    = e.duration_seconds != null ? fmtDur(e.duration_seconds) : '—';
+      let   cum;
+      if (e.cumulative_seconds != null) {
+        cum = fmtDur(e.cumulative_seconds);
+      } else if (e.duration_seconds != null) {
+        runningCum += e.duration_seconds;
+        cum = fmtDur(runningCum);
+      } else {
+        cum = '—';
+      }
+      return `<tr>
+        <td class="bd-role">${escHtml(role)}</td>
+        <td>${escHtml(status)}</td>
+        <td class="bd-dur">${escHtml(dur)}</td>
+        <td class="bd-cum">${escHtml(cum)}</td>
+      </tr>`;
+    }).join('');
+
+    const footerHtml = totalElapsed != null
+      ? `<tr class="bd-foot"><td colspan="2">Total elapsed</td><td class="bd-dur" colspan="2">${escHtml(fmtDur(totalElapsed))}</td></tr>`
+      : '';
+
+    const breakdownRow = document.createElement('tr');
+    breakdownRow.className = 'breakdown-row';
+    breakdownRow.innerHTML = `<td colspan="7"><div class="breakdown-inner">${
+      events.length
+        ? `<table class="breakdown-table"><thead><tr><th>Role</th><th>Status</th><th>Duration</th><th>Cumulative</th></tr></thead><tbody>${rowsHtml}${footerHtml}</tbody></table>`
+        : '<div style="color:var(--muted);font-size:0.78rem;padding:4px 0">No stage data yet</div>'
+    }</div></td>`;
+
+    runRow.after(breakdownRow);
   }
 
   document.getElementById('project-panel-back').addEventListener('click', () => {
@@ -1742,8 +1879,15 @@
       return;
     }
 
+    const toggleBtn = e.target.closest('.expand-toggle');
+    if (toggleBtn) {
+      e.stopPropagation();
+      toggleExpandRow(toggleBtn.dataset.project, parseInt(toggleBtn.dataset.issue, 10), toggleBtn);
+      return;
+    }
+
     const runRow = e.target.closest('#runs-table-body tr[data-project]');
-    if (runRow && !e.target.closest('a')) {
+    if (runRow && !runRow.classList.contains('breakdown-row') && !e.target.closest('a') && !e.target.closest('.expand-toggle')) {
       const project = runRow.dataset.project;
       const issue   = runRow.dataset.issue !== '' ? parseInt(runRow.dataset.issue, 10) : null;
       const pr      = runRow.dataset.pr    !== '' ? parseInt(runRow.dataset.pr,    10) : null;
