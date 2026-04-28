@@ -289,6 +289,37 @@ def test_missing_api_accepted_with_warning(isolated_client, caplog):
     assert any("no 'api' field" in r.message for r in caplog.records)
 
 
+def test_loop_id_persisted(isolated_client):
+    import sqlite3
+    isolated_client.post("/api/report", json={
+        "project": "proj-li", "role": "dev", "event_type": "dev_start",
+        "loop_id": "my-loop",
+    })
+    import time; time.sleep(0.05)  # background task
+    conn = sqlite3.connect(server.DB_PATH)
+    row = conn.execute(
+        "SELECT loop_id FROM events WHERE project='proj-li' AND loop_id='my-loop'"
+    ).fetchone()
+    conn.close()
+    assert row is not None
+    assert row[0] == "my-loop"
+
+
+def test_loop_id_null_when_absent(isolated_client):
+    import sqlite3
+    isolated_client.post("/api/report", json={
+        "project": "proj-li2", "role": "dev", "event_type": "dev_start",
+    })
+    import time; time.sleep(0.05)  # background task
+    conn = sqlite3.connect(server.DB_PATH)
+    row = conn.execute(
+        "SELECT loop_id FROM events WHERE project='proj-li2'"
+    ).fetchone()
+    conn.close()
+    assert row is not None
+    assert row[0] is None
+
+
 def test_health_core_version_counts(isolated_client):
     isolated_client.post("/api/report", json={
         "api": "1.0", "project": "p", "role": "dev", "event_type": "dev_done",
