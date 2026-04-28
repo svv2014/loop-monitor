@@ -486,6 +486,145 @@
     }
     a.gh-link:hover { text-decoration: underline; }
 
+    /* ── Project link in card ── */
+    .project-name-link {
+      color: var(--text);
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .project-name-link:hover { color: var(--accent2); text-decoration: underline; }
+
+    /* ── In-flight pulse badge ── */
+    .pulse-badge {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      animation: pulse 1.5s ease-in-out infinite;
+      vertical-align: middle;
+      margin-right: 4px;
+    }
+
+    /* ── Project runs panel ── */
+    #project-panel {
+      display: none;
+      max-width: 1400px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    #project-panel.active { display: block; }
+
+    .project-panel-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+
+    .project-panel-back {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 0.82rem;
+      padding: 4px 10px;
+      line-height: 1.4;
+    }
+    .project-panel-back:hover { color: var(--text); border-color: var(--muted); }
+
+    .runs-table-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .runs-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+
+    .runs-table th {
+      text-align: left;
+      padding: 10px 12px;
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .runs-table td {
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+
+    .runs-table tr:last-child td { border-bottom: none; }
+    .runs-table tbody tr.run-row { cursor: pointer; }
+    .runs-table tbody tr.run-row:hover td { background: var(--surface2); }
+
+    .outcome-badge {
+      font-size: 0.68rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      padding: 2px 7px;
+      border-radius: 4px;
+    }
+    .outcome-badge.clean  { background: #0d2b1f; color: var(--green); }
+    .outcome-badge.fail   { background: #2b0d0d; color: var(--red); }
+    .outcome-badge.null   { background: transparent; }
+
+    /* ── Expand toggle ── */
+    .expand-toggle {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 0.7rem;
+      padding: 2px 5px;
+      line-height: 1;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .expand-toggle:hover { color: var(--text); border-color: var(--muted); }
+    .expand-toggle.open  { color: var(--accent2); border-color: var(--accent2); }
+
+    /* ── Inline stage breakdown ── */
+    .breakdown-row td { padding: 0; border-bottom: 1px solid var(--border); }
+    .breakdown-inner {
+      padding: 10px 16px 10px 44px;
+      background: var(--bg);
+    }
+    .breakdown-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.75rem;
+    }
+    .breakdown-table th {
+      text-align: left;
+      padding: 4px 8px;
+      color: var(--muted);
+      font-size: 0.62rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--border);
+    }
+    .breakdown-table td {
+      padding: 5px 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .breakdown-table tr:last-child td { border-bottom: none; }
+    .breakdown-table .bd-role { color: var(--accent); font-weight: 600; }
+    .breakdown-table .bd-dur  { color: var(--accent2); font-weight: 600; }
+    .breakdown-table .bd-cum  { color: var(--muted); }
+    .breakdown-table .bd-foot td { color: var(--text); font-weight: 600; border-top: 1px solid var(--border); padding-top: 6px; }
+
     /* ── Timeline links (open drawer) ── */
     .timeline-link {
       color: var(--accent2);
@@ -709,6 +848,31 @@
         <div class="empty-state">Loading…</div>
       </div>
     </div>
+  </div>
+</section>
+
+<section id="project-panel">
+  <div class="project-panel-header">
+    <button class="project-panel-back" id="project-panel-back">← Back</button>
+    <span id="project-panel-title" class="section-title" style="margin-bottom:0;font-size:0.85rem"></span>
+  </div>
+  <div class="runs-table-wrap">
+    <table class="runs-table">
+      <thead>
+        <tr>
+          <th></th>
+          <th>Issue</th>
+          <th>PR</th>
+          <th>Outcome</th>
+          <th>Duration</th>
+          <th>Rework</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody id="runs-table-body">
+        <tr><td colspan="7" class="empty-state">Loading…</td></tr>
+      </tbody>
+    </table>
   </div>
 </section>
 
@@ -949,7 +1113,7 @@
       card.className = `agent-card ${status}`;
       card.innerHTML = `
         <div class="agent-header">
-          <span class="agent-role">📦 ${escHtml(proj)}</span>
+          <span class="agent-role">📦 <a class="project-name-link" href="#project/${encodeURIComponent(proj)}" data-project="${escHtml(proj)}">${escHtml(proj)}</a></span>
           <span class="status-badge ${status}">${status}</span>
         </div>
         <div class="agent-task">${isActive ? activeLines : lastLine || '<span style="color:var(--muted)">No activity yet</span>'}</div>
@@ -1265,10 +1429,173 @@
   function closeDrawer() {
     drawerEl.classList.remove('open');
     backdropEl.classList.remove('open');
-    if (window.location.hash) {
+    const h = window.location.hash;
+    if (h && !h.startsWith('#project/')) {
       history.pushState(null, '', window.location.pathname + window.location.search);
     }
   }
+
+  // ── Project runs panel ──
+  const projectPanel   = document.getElementById('project-panel');
+  const mainEl         = document.querySelector('main');
+  const chartsEl       = document.getElementById('charts-section');
+
+  function showProjectPanel(project) {
+    document.getElementById('project-panel-title').textContent = project + ' — Run History';
+    document.getElementById('runs-table-body').innerHTML =
+      '<tr><td colspan="7" class="empty-state">Loading…</td></tr>';
+
+    mainEl.style.display   = 'none';
+    chartsEl.style.display = 'none';
+    projectPanel.classList.add('active');
+
+    history.pushState(null, '', '#project/' + encodeURIComponent(project));
+
+    fetch('/api/runs/' + encodeURIComponent(project))
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(rows => renderRunsTable(project, rows))
+      .catch(() => {
+        document.getElementById('runs-table-body').innerHTML =
+          '<tr><td colspan="7" style="color:var(--red);text-align:center;padding:16px">Failed to load runs</td></tr>';
+      });
+  }
+
+  function showHome() {
+    projectPanel.classList.remove('active');
+    mainEl.style.display   = '';
+    chartsEl.style.display = '';
+  }
+
+  // ── Timeline cache (keyed by "project|issue_number") ──
+  const timelineCache = {};
+
+  function renderRunsTable(project, rows) {
+    const tbody = document.getElementById('runs-table-body');
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No runs yet for this project</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(r => {
+      const issueCell = r.issue_number != null ? ghLink(project, r.issue_number, 'issue') : '—';
+      const prCell    = r.pr_number    != null ? ghLink(project, r.pr_number,    'pull')  : '—';
+      const dur       = r.total_duration_seconds != null ? fmtDur(r.total_duration_seconds) : '—';
+      const rework    = r.rework_count != null ? r.rework_count : 0;
+      const created   = r.created_at ? new Date(r.created_at).toLocaleDateString() : '—';
+      const issueAttr = r.issue_number != null ? r.issue_number : '';
+      const prAttr    = r.pr_number    != null ? r.pr_number    : '';
+      const canExpand = r.issue_number != null;
+
+      let outcomeHtml;
+      if (r.outcome == null) {
+        outcomeHtml = '<span class="outcome-badge null"><span class="pulse-badge"></span>in-flight</span>';
+      } else if ((r.outcome || '').toLowerCase() === 'clean') {
+        outcomeHtml = `<span class="outcome-badge clean">${escHtml(r.outcome)}</span>`;
+      } else {
+        outcomeHtml = `<span class="outcome-badge fail">${escHtml(r.outcome)}</span>`;
+      }
+
+      const toggleBtn = canExpand
+        ? `<button class="expand-toggle" data-project="${escHtml(project)}" data-issue="${issueAttr}" aria-label="Expand stage breakdown">▶</button>`
+        : '';
+
+      return `<tr class="run-row" data-project="${escHtml(project)}" data-issue="${issueAttr}" data-pr="${prAttr}">
+        <td style="width:32px">${toggleBtn}</td>
+        <td>${issueCell}</td>
+        <td>${prCell}</td>
+        <td>${outcomeHtml}</td>
+        <td style="color:var(--muted);font-size:0.78rem">${escHtml(dur)}</td>
+        <td style="color:var(--muted);font-size:0.78rem">${rework}</td>
+        <td style="color:var(--muted);font-size:0.75rem">${escHtml(created)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function toggleExpandRow(project, issueNumber, btn) {
+    const runRow = btn.closest('tr.run-row');
+    const existingBreakdown = runRow.nextElementSibling;
+    const isOpen = btn.classList.contains('open');
+
+    if (isOpen) {
+      btn.classList.remove('open');
+      btn.textContent = '▶';
+      if (existingBreakdown && existingBreakdown.classList.contains('breakdown-row')) {
+        existingBreakdown.remove();
+      }
+      return;
+    }
+
+    const cacheKey = `${project}|${issueNumber}`;
+    if (timelineCache[cacheKey]) {
+      insertBreakdownRow(runRow, timelineCache[cacheKey]);
+      btn.classList.add('open');
+      btn.textContent = '▼';
+      return;
+    }
+
+    btn.textContent = '…';
+    fetch(`/api/stats/timeline/${encodeURIComponent(project)}/${issueNumber}`)
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(data => {
+        timelineCache[cacheKey] = data;
+        insertBreakdownRow(runRow, data);
+        btn.classList.add('open');
+        btn.textContent = '▼';
+      })
+      .catch(() => {
+        btn.textContent = '▶';
+        btn.title = 'Failed to load timeline';
+      });
+  }
+
+  function insertBreakdownRow(runRow, data) {
+    const events = data.events || [];
+    const totalElapsed = data.total_elapsed_seconds != null
+      ? data.total_elapsed_seconds
+      : (data.summary && data.summary.total_duration_seconds != null
+          ? data.summary.total_duration_seconds : null);
+
+    let cumulativeSoFar = 0;
+    const rowsHtml = events.map(e => {
+      const role   = (e.role || '').charAt(0).toUpperCase() + (e.role || '').slice(1);
+      const status = e.status || '—';
+      const dur    = e.duration_seconds != null ? fmtDur(e.duration_seconds) : '—';
+      const cum    = e.cumulative_seconds != null
+        ? fmtDur(e.cumulative_seconds)
+        : (e.duration_seconds != null ? (cumulativeSoFar += e.duration_seconds, fmtDur(cumulativeSoFar)) : '—');
+      return `<tr>
+        <td class="bd-role">${escHtml(role)}</td>
+        <td>${escHtml(status)}</td>
+        <td class="bd-dur">${escHtml(dur)}</td>
+        <td class="bd-cum">${escHtml(cum)}</td>
+      </tr>`;
+    }).join('');
+
+    const footerHtml = totalElapsed != null
+      ? `<tr class="bd-foot">
+          <td colspan="2">Total elapsed</td>
+          <td class="bd-dur" colspan="2">${escHtml(fmtDur(totalElapsed))}</td>
+        </tr>`
+      : '';
+
+    const colspan = 7;
+    const breakdownRow = document.createElement('tr');
+    breakdownRow.className = 'breakdown-row';
+    breakdownRow.innerHTML = `<td colspan="${colspan}">
+      <div class="breakdown-inner">
+        ${events.length ? `<table class="breakdown-table">
+          <thead><tr><th>Role</th><th>Status</th><th>Duration</th><th>Cumulative</th></tr></thead>
+          <tbody>${rowsHtml}${footerHtml}</tbody>
+        </table>` : '<div style="color:var(--muted);font-size:0.78rem;padding:4px 0">No stage data yet</div>'}
+      </div>
+    </td>`;
+
+    runRow.after(breakdownRow);
+  }
+
+  document.getElementById('project-panel-back').addEventListener('click', () => {
+    history.pushState(null, '', window.location.pathname + window.location.search);
+    showHome();
+  });
 
   function populateDrawer(data, project, issue, pr) {
     const sum      = data.summary || {};
@@ -1331,7 +1658,7 @@
     }
   }
 
-  // Click delegation for .timeline-link
+  // Click delegation for .timeline-link, .project-name-link, expand-toggle, and runs table rows
   document.addEventListener('click', e => {
     const link = e.target.closest('.timeline-link');
     if (link) {
@@ -1341,6 +1668,31 @@
         ? parseInt(link.dataset.issue, 10) : null;
       const pr      = link.dataset.pr    != null && link.dataset.pr    !== ''
         ? parseInt(link.dataset.pr, 10)    : null;
+      openDrawer(project, issue, pr);
+      return;
+    }
+
+    const projLink = e.target.closest('.project-name-link');
+    if (projLink) {
+      e.preventDefault();
+      showProjectPanel(projLink.dataset.project);
+      return;
+    }
+
+    const toggleBtn = e.target.closest('.expand-toggle');
+    if (toggleBtn) {
+      e.stopPropagation();
+      const project = toggleBtn.dataset.project;
+      const issue   = parseInt(toggleBtn.dataset.issue, 10);
+      toggleExpandRow(project, issue, toggleBtn);
+      return;
+    }
+
+    const runRow = e.target.closest('#runs-table-body tr.run-row[data-project]');
+    if (runRow && !e.target.closest('a') && !e.target.closest('.expand-toggle')) {
+      const project = runRow.dataset.project;
+      const issue   = runRow.dataset.issue !== '' ? parseInt(runRow.dataset.issue, 10) : null;
+      const pr      = runRow.dataset.pr    !== '' ? parseInt(runRow.dataset.pr,    10) : null;
       openDrawer(project, issue, pr);
     }
   });
@@ -1355,13 +1707,19 @@
 
   // Hash-based navigation
   function checkHash() {
-    const m = window.location.hash.match(/^#issue\/([^/]+)\/(\d+)$/);
-    if (m) openDrawer(decodeURIComponent(m[1]), parseInt(m[2], 10), null);
+    const h = window.location.hash;
+    const mIssue   = h.match(/^#issue\/([^/]+)\/(\d+)$/);
+    const mProject = h.match(/^#project\/([^/]+)$/);
+    if (mIssue)        openDrawer(decodeURIComponent(mIssue[1]), parseInt(mIssue[2], 10), null);
+    else if (mProject) showProjectPanel(decodeURIComponent(mProject[1]));
   }
   window.addEventListener('hashchange', () => {
-    const m = window.location.hash.match(/^#issue\/([^/]+)\/(\d+)$/);
-    if (m) openDrawer(decodeURIComponent(m[1]), parseInt(m[2], 10), null);
-    else if (!window.location.hash) closeDrawer();
+    const h = window.location.hash;
+    const mIssue   = h.match(/^#issue\/([^/]+)\/(\d+)$/);
+    const mProject = h.match(/^#project\/([^/]+)$/);
+    if (mIssue)        openDrawer(decodeURIComponent(mIssue[1]), parseInt(mIssue[2], 10), null);
+    else if (mProject) showProjectPanel(decodeURIComponent(mProject[1]));
+    else { closeDrawer(); showHome(); }
   });
 
   // ── Init ──
