@@ -402,3 +402,47 @@ def test_feed_age_seconds(isolated_client):
     assert "age_seconds" in item
     assert isinstance(item["age_seconds"], int)
     assert item["age_seconds"] >= 0
+
+
+# ── cycle_times tests ──
+
+def test_cycle_times_empty(isolated_client):
+    """Returns null fields when no completed runs exist for the slug."""
+    resp = isolated_client.get("/api/projects/no-such-project/cycle_times")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data == {"total_duration": None, "issue_lifetime": None, "pr_lifetime": None}
+
+
+def test_cycle_times_with_data(isolated_client):
+    """Median and P90 are computed correctly from pipeline_runs rows."""
+    import sqlite3
+    conn = sqlite3.connect(server.DB_PATH)
+    # Insert 10 rows with total_duration_seconds = 10, 20, ..., 100 (ordered by id)
+    for i in range(1, 11):
+        conn.execute(
+            """INSERT INTO pipeline_runs
+               (project, issue_number, total_duration_seconds, created_at)
+               VALUES (?, ?, ?, datetime('now'))""",
+            ("proj-ct", i, i * 10),
+        )
+    conn.commit()
+    conn.close()
+
+    resp = isolated_client.get("/api/projects/proj-ct/cycle_times")
+    assert resp.status_code == 200
+    data = resp.json()
+
+    td = data["total_duration"]
+    assert td is not None
+    assert td["sample_size"] == 10
+    # sorted: [10,20,30,40,50,60,70,80,90,100]; floor(0.5*10)=5 → index 5 → 60
+    assert td["median_seconds"] == 60
+    # floor(0.9*10)=9 → index 9 → 100
+    assert td["p90_seconds"] == 100
+    # most_recent is the last inserted row
+    assert td["most_recent_seconds"] == 100
+
+    # issue_lifetime and pr_lifetime are null because columns not set
+    assert data["issue_lifetime"] is None
+    assert data["pr_lifetime"] is None
