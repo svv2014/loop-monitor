@@ -19,6 +19,7 @@ its own version (currently `1.0`) baked into every payload.
 - [LM-28] UI: show monitor version in header; add loop_id filter selector (#76)
 - [LM-79] Add DB migrations framework (replace CREATE IF NOT EXISTS pattern) (#86)
 - [LM-80] Remove dead shell scripts, add *.db to .gitignore, document run.sh (#89)
+- [LM-85] Modularize static/index.html — extract JS into static/js/ ES modules (#90)
 ## [0.1.1] - 2026-04-27
 
 Catch-up release. v0.1.0 shipped a stale embedded copy of bounty-monitor
