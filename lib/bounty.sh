@@ -23,7 +23,7 @@ bounty_report() {
         pr_field=",\"pr_number\":${pr_number}"
     fi
     local payload
-    payload="{\"role\":\"${role}\",\"project\":\"${project}\",\"ref\":\"${ref}\",\"event_type\":\"${event_type}\",\"trigger_judge\":${trigger},\"timestamp\":\"${ts}\"${issue_field}${pr_field}}"
+    payload="{\"api\":\"1.0\",\"role\":\"${role}\",\"project\":\"${project}\",\"ref\":\"${ref}\",\"event_type\":\"${event_type}\",\"trigger_judge\":${trigger},\"timestamp\":\"${ts}\"${issue_field}${pr_field}}"
     curl -sf \
         --max-time 3 \
         --connect-timeout 2 \
