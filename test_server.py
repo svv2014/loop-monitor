@@ -285,3 +285,31 @@ def test_health_core_version_counts(isolated_client):
     counts = resp.json()["core_version_counts"]
     assert counts["0.1.0"] == 2
     assert counts["0.2.0"] == 1
+
+
+# ── Concurrency test ──
+
+def test_concurrent_reports_both_persisted(isolated_client):
+    """Two simultaneous POST /api/report calls must both appear in /api/feed."""
+    import threading
+
+    results = []
+
+    def post():
+        resp = isolated_client.post("/api/report", json={
+            "project": "proj-concurrent", "role": "builder",
+            "event_type": "started",
+        })
+        results.append(resp.status_code)
+
+    threads = [threading.Thread(target=post) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert results == [202, 202]
+
+    feed = isolated_client.get("/api/feed").json()
+    concurrent_events = [e for e in feed if e["project"] == "proj-concurrent"]
+    assert len(concurrent_events) == 2

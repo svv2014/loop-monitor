@@ -18,6 +18,8 @@ DB_PATH = "bounty.db"
 def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=10000")
     return conn
 
 
@@ -221,107 +223,112 @@ def _auto_bounty(conn, data: "ReportPayload", now: str):
 
 
 def _insert_event(data: ReportPayload):
-    conn = get_db()
-    now = datetime.now(timezone.utc).isoformat()
-    conn.execute(
-        """INSERT INTO events
-           (project, role, model, event_type, issue_number, pr_number, detail, payload, core_version, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            data.project,
-            data.role,
-            data.model,
-            data.event_type,
-            data.issue_number,
-            data.pr_number,
-            data.detail,
-            json.dumps(data.payload) if data.payload else None,
-            data.core_version,
-            now,
-        ),
-    )
-
-    if data.issue_number is not None:
+    try:
+        conn = get_db()
+        now = datetime.now(timezone.utc).isoformat()
         conn.execute(
-            """INSERT INTO issue_history
-               (project, issue_number, pr_number, role, event_type, agent, model,
-                duration_seconds, rework_count, created_at)
+            """INSERT INTO events
+               (project, role, model, event_type, issue_number, pr_number, detail, payload, core_version, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 data.project,
+                data.role,
+                data.model,
+                data.event_type,
                 data.issue_number,
                 data.pr_number,
-                data.role,
-                data.event_type,
-                data.agent,
-                data.model,
-                data.duration_seconds,
-                data.rework_count or 0,
+                data.detail,
+                json.dumps(data.payload) if data.payload else None,
+                data.core_version,
                 now,
             ),
         )
 
-        existing_run = conn.execute(
-            "SELECT id, rework_count FROM pipeline_runs WHERE project=? AND issue_number=?",
-            (data.project, data.issue_number),
-        ).fetchone()
-
-        if existing_run:
-            updates = ["completed_at=?"]
-            params: list = [now]
-            if data.pr_number is not None:
-                updates.append("pr_number=?")
-                params.append(data.pr_number)
-            if data.rework_count is not None:
-                updates.append("rework_count=rework_count+?")
-                params.append(data.rework_count)
-            params.append(existing_run["id"])
+        if data.issue_number is not None:
             conn.execute(
-                f"UPDATE pipeline_runs SET {', '.join(updates)} WHERE id=?",
-                params,
-            )
-        else:
-            conn.execute(
-                """INSERT INTO pipeline_runs
-                   (project, issue_number, pr_number, started_at, completed_at, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (data.project, data.issue_number, data.pr_number, now, now, now),
+                """INSERT INTO issue_history
+                   (project, issue_number, pr_number, role, event_type, agent, model,
+                    duration_seconds, rework_count, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    data.project,
+                    data.issue_number,
+                    data.pr_number,
+                    data.role,
+                    data.event_type,
+                    data.agent,
+                    data.model,
+                    data.duration_seconds,
+                    data.rework_count or 0,
+                    now,
+                ),
             )
 
-    _auto_bounty(conn, data, now)
-    conn.commit()
-    conn.close()
+            existing_run = conn.execute(
+                "SELECT id, rework_count FROM pipeline_runs WHERE project=? AND issue_number=?",
+                (data.project, data.issue_number),
+            ).fetchone()
+
+            if existing_run:
+                updates = ["completed_at=?"]
+                params: list = [now]
+                if data.pr_number is not None:
+                    updates.append("pr_number=?")
+                    params.append(data.pr_number)
+                if data.rework_count is not None:
+                    updates.append("rework_count=rework_count+?")
+                    params.append(data.rework_count)
+                params.append(existing_run["id"])
+                conn.execute(
+                    f"UPDATE pipeline_runs SET {', '.join(updates)} WHERE id=?",
+                    params,
+                )
+            else:
+                conn.execute(
+                    """INSERT INTO pipeline_runs
+                       (project, issue_number, pr_number, started_at, completed_at, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (data.project, data.issue_number, data.pr_number, now, now, now),
+                )
+
+        _auto_bounty(conn, data, now)
+        conn.commit()
+        conn.close()
+    except sqlite3.OperationalError as exc:
+        logger.error("_insert_event: db write failed: %s", exc)
 
 
 def _insert_verdict(data: VerdictPayload):
-    conn = get_db()
-    now = datetime.now(timezone.utc).isoformat()
-    conn.execute(
-        "INSERT INTO verdicts (project, role, model, points, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-        (data.project, data.role, data.model, data.points, data.reason, now),
-    )
-    # Upsert into scores
-    existing = conn.execute(
-        "SELECT id, total_points, verdict_count FROM scores WHERE project=? AND role=? AND model IS ?",
-        (data.project, data.role, data.model),
-    ).fetchone()
-    if existing:
+    try:
+        conn = get_db()
+        now = datetime.now(timezone.utc).isoformat()
         conn.execute(
-            "UPDATE scores SET total_points=?, verdict_count=?, updated_at=? WHERE id=?",
-            (
-                existing["total_points"] + data.points,
-                existing["verdict_count"] + 1,
-                now,
-                existing["id"],
-            ),
+            "INSERT INTO verdicts (project, role, model, points, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (data.project, data.role, data.model, data.points, data.reason, now),
         )
-    else:
-        conn.execute(
-            "INSERT INTO scores (project, role, model, total_points, verdict_count, updated_at) VALUES (?, ?, ?, ?, 1, ?)",
-            (data.project, data.role, data.model, data.points, now),
-        )
-    conn.commit()
-    conn.close()
+        existing = conn.execute(
+            "SELECT id, total_points, verdict_count FROM scores WHERE project=? AND role=? AND model IS ?",
+            (data.project, data.role, data.model),
+        ).fetchone()
+        if existing:
+            conn.execute(
+                "UPDATE scores SET total_points=?, verdict_count=?, updated_at=? WHERE id=?",
+                (
+                    existing["total_points"] + data.points,
+                    existing["verdict_count"] + 1,
+                    now,
+                    existing["id"],
+                ),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO scores (project, role, model, total_points, verdict_count, updated_at) VALUES (?, ?, ?, ?, 1, ?)",
+                (data.project, data.role, data.model, data.points, now),
+            )
+        conn.commit()
+        conn.close()
+    except sqlite3.OperationalError as exc:
+        logger.error("_insert_verdict: db write failed: %s", exc)
 
 
 SUPPORTED_API_MAJOR = "1"
