@@ -50,6 +50,8 @@ pip install -r requirements.txt
 ./run.sh
 ```
 
+`run.sh` is the server entrypoint — it starts the uvicorn process on port 18792.
+
 Open http://127.0.0.1:18792.
 
 ## Wire it to Loop

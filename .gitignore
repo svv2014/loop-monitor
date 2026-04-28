@@ -1,5 +1,5 @@
 # Runtime artifacts
-bounties.db
+*.db
 *.db-journal
 *.db-shm
 *.db-wal
@@ -10,6 +10,3 @@ __pycache__/
 *.pyc
 .venv/
 venv/
-bounty.db
-bounty.db-shm
-bounty.db-wal
