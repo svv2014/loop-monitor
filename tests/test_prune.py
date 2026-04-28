@@ -8,6 +8,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import server
+import server.db
 from scripts.prune import run
 
 
@@ -18,10 +19,10 @@ def _ts(days_ago: float) -> str:
 @pytest.fixture()
 def db_path(tmp_path):
     path = str(tmp_path / "test.db")
-    old_db = server.DB_PATH
-    server.DB_PATH = path
+    old_db = server.db.DB_PATH
+    server.db.DB_PATH = path
     server.apply_pending_migrations()
-    server.DB_PATH = old_db
+    server.db.DB_PATH = old_db
     return path
 
 
