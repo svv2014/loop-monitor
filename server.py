@@ -556,11 +556,24 @@ def get_timeline_by_pr(project: str, pr_number: int):
         "SELECT issue_number FROM pipeline_runs WHERE project=? AND pr_number=? ORDER BY id DESC LIMIT 1",
         (project, pr_number),
     ).fetchone()
-    conn.close()
 
     if run_row is None:
-        raise HTTPException(status_code=404, detail="PR not found")
+        rows = conn.execute(
+            "SELECT * FROM events WHERE project=? AND pr_number=? ORDER BY created_at",
+            (project, pr_number),
+        ).fetchall()
+        conn.close()
+        if not rows:
+            raise HTTPException(status_code=404, detail="PR not found")
+        return {
+            "pr_number": pr_number,
+            "project": project,
+            "issue_number": None,
+            "summary": {},
+            "events": [dict(r) for r in rows],
+        }
 
+    conn.close()
     return get_timeline(project, run_row["issue_number"])
 
 
