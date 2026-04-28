@@ -93,6 +93,7 @@ def init_db():
         ("pr_number", "INTEGER"),
         ("detail", "TEXT"),
         ("core_version", "TEXT"),
+        ("loop_id", "TEXT"),
     ]:
         if col not in cols:
             conn.execute(f"ALTER TABLE events ADD COLUMN {col} {defn}")
@@ -137,6 +138,7 @@ class ReportPayload(BaseModel):
     detail: Optional[str] = None
     duration_seconds: Optional[int] = None
     rework_count: Optional[int] = None
+    loop_id: Optional[str] = None
 
     class Config:
         extra = "ignore"
@@ -225,8 +227,8 @@ def _insert_event(data: ReportPayload):
     now = datetime.now(timezone.utc).isoformat()
     conn.execute(
         """INSERT INTO events
-           (project, role, model, event_type, issue_number, pr_number, detail, payload, core_version, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           (project, role, model, event_type, issue_number, pr_number, detail, payload, core_version, loop_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             data.project,
             data.role,
@@ -237,6 +239,7 @@ def _insert_event(data: ReportPayload):
             data.detail,
             json.dumps(data.payload) if data.payload else None,
             data.core_version,
+            data.loop_id,
             now,
         ),
     )
