@@ -285,3 +285,66 @@ def test_health_core_version_counts(isolated_client):
     counts = resp.json()["core_version_counts"]
     assert counts["0.1.0"] == 2
     assert counts["0.2.0"] == 1
+
+
+# ── Timeline cumulative_seconds and feed age_seconds tests ──
+
+def test_timeline_cumulative_seconds(isolated_client):
+    """cumulative_seconds on each event is elapsed from the first event."""
+    import time as _time
+    # Insert start then done events with a known gap via _insert_event
+    # Use direct DB insertion with controlled timestamps for determinism
+    import sqlite3, server as _srv
+    conn = sqlite3.connect(_srv.DB_PATH)
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "INSERT INTO events (project, role, event_type, issue_number, created_at) VALUES (?,?,?,?,?)",
+        ("proj-cum", "builder", "build_start", 77, "2024-01-01T10:00:00+0000"),
+    )
+    conn.execute(
+        "INSERT INTO events (project, role, event_type, issue_number, created_at) VALUES (?,?,?,?,?)",
+        ("proj-cum", "builder", "build_done", 77, "2024-01-01T10:05:00+0000"),
+    )
+    conn.execute(
+        "INSERT INTO events (project, role, event_type, issue_number, created_at) VALUES (?,?,?,?,?)",
+        ("proj-cum", "tester", "test_start", 77, "2024-01-01T10:06:00+0000"),
+    )
+    conn.execute(
+        "INSERT INTO events (project, role, event_type, issue_number, created_at) VALUES (?,?,?,?,?)",
+        ("proj-cum", "tester", "test_done", 77, "2024-01-01T10:08:00+0000"),
+    )
+    conn.commit()
+    conn.close()
+
+    resp = isolated_client.get("/api/stats/timeline/proj-cum/77")
+    assert resp.status_code == 200
+    data = resp.json()
+    events = data["events"]
+    assert len(events) == 2
+
+    build_ev = next(e for e in events if e["role"] == "builder")
+    test_ev  = next(e for e in events if e["role"] == "tester")
+
+    # build_done at +5m from first event → cumulative 300s
+    assert build_ev["cumulative_seconds"] == 300
+    # test_done at +8m from first event → cumulative 480s
+    assert test_ev["cumulative_seconds"] == 480
+
+    # total_elapsed_seconds = 8m = 480s
+    assert data["total_elapsed_seconds"] == 480
+
+
+def test_feed_age_seconds(isolated_client):
+    """Each feed item includes age_seconds computed server-side."""
+    isolated_client.post("/api/report", json={
+        "project": "proj-age", "role": "builder", "event_type": "started",
+    })
+    resp = isolated_client.get("/api/feed")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) >= 1
+    item = next((i for i in data if i["project"] == "proj-age"), None)
+    assert item is not None
+    assert "age_seconds" in item
+    assert isinstance(item["age_seconds"], int)
+    assert item["age_seconds"] >= 0

@@ -445,11 +445,19 @@ def feed():
            FROM events ORDER BY id DESC LIMIT 50"""
     ).fetchall()
     conn.close()
+    now = datetime.now(timezone.utc)
     result = []
     for r in rows:
         entry = dict(r)
         if entry["payload"]:
             entry["payload"] = json.loads(entry["payload"])
+        try:
+            created = datetime.fromisoformat(entry["created_at"].replace(" ", "T"))
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+            entry["age_seconds"] = int((now - created).total_seconds())
+        except Exception:
+            entry["age_seconds"] = None
         result.append(entry)
     return result
 
@@ -622,6 +630,16 @@ def get_timeline(project: str, issue: int):
 
     events = _build_timeline_events(history_rows)
 
+    # Compute total elapsed seconds from first to last event in the set
+    total_elapsed_seconds = None
+    ts_candidates = []
+    for e in events:
+        ts_candidates.append(_parse_ts(e.get("started_at")))
+        ts_candidates.append(_parse_ts(e.get("completed_at")))
+    ts_valid = [t for t in ts_candidates if t is not None]
+    if len(ts_valid) >= 2:
+        total_elapsed_seconds = int((max(ts_valid) - min(ts_valid)).total_seconds())
+
     summary: dict = {}
     if summary_row:
         summary = dict(summary_row)
@@ -631,8 +649,31 @@ def get_timeline(project: str, issue: int):
         "project": project,
         "repo": PROJECTS.get(project, project),
         "summary": summary,
+        "total_elapsed_seconds": total_elapsed_seconds,
         "events": events,
     }
+
+
+_TS_FORMATS = (
+    "%Y-%m-%dT%H:%M:%S.%f%z",
+    "%Y-%m-%dT%H:%M:%S%z",
+    "%Y-%m-%d %H:%M:%S",
+)
+
+
+def _parse_ts(s: Optional[str]) -> Optional[datetime]:
+    if not s:
+        return None
+    normalized = s.replace("+00:00", "+0000")
+    for fmt in _TS_FORMATS:
+        try:
+            dt = datetime.strptime(normalized, fmt)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
+        except ValueError:
+            continue
+    return None
 
 
 def _build_timeline_events(history_rows) -> list:
@@ -640,11 +681,15 @@ def _build_timeline_events(history_rows) -> list:
     # key: (role, prefix) -> start row
     pending: dict = {}
     result = []
+    first_event_ts: Optional[datetime] = None
 
     for row in history_rows:
         role = row["role"]
         event_type = row["event_type"]
         created_at = row["created_at"]
+
+        if first_event_ts is None:
+            first_event_ts = _parse_ts(created_at)
 
         if event_type.endswith("_start"):
             prefix = event_type[: -len("_start")]
@@ -658,19 +703,14 @@ def _build_timeline_events(history_rows) -> list:
                 status = "failed"
             started_at = pending.pop((role, prefix), None)
             duration_seconds = None
-            if started_at:
-                try:
-                    from datetime import datetime
-                    for fmt in ("%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d %H:%M:%S"):
-                        try:
-                            t_start = datetime.strptime(started_at.replace("+00:00", "+0000"), fmt)
-                            t_end = datetime.strptime(created_at.replace("+00:00", "+0000"), fmt)
-                            duration_seconds = int((t_end - t_start).total_seconds())
-                            break
-                        except ValueError:
-                            continue
-                except Exception:
-                    pass
+            t_end = _parse_ts(created_at)
+            if started_at and t_end:
+                t_start = _parse_ts(started_at)
+                if t_start:
+                    duration_seconds = int((t_end - t_start).total_seconds())
+            cumulative_seconds = None
+            if first_event_ts and t_end:
+                cumulative_seconds = int((t_end - first_event_ts).total_seconds())
             result.append({
                 "role": role,
                 "event_type": f"{prefix}_{status}",
@@ -678,10 +718,15 @@ def _build_timeline_events(history_rows) -> list:
                 "started_at": started_at,
                 "completed_at": created_at,
                 "duration_seconds": duration_seconds,
+                "cumulative_seconds": cumulative_seconds,
             })
 
     # Any still-pending starts are running
     for (role, prefix), started_at in pending.items():
+        t_start = _parse_ts(started_at)
+        cumulative_seconds = None
+        if first_event_ts and t_start:
+            cumulative_seconds = int((t_start - first_event_ts).total_seconds())
         result.append({
             "role": role,
             "event_type": f"{prefix}_start",
@@ -689,6 +734,7 @@ def _build_timeline_events(history_rows) -> list:
             "started_at": started_at,
             "completed_at": None,
             "duration_seconds": None,
+            "cumulative_seconds": cumulative_seconds,
         })
 
     # Sort by started_at
