@@ -457,10 +457,12 @@ def board():
 
 
 @app.get("/api/history")
-def history(limit: int = 50):
+def history(limit: int = 50, loop_id: Optional[str] = None):
     """Completed jobs: *_done/*_pass events paired with their *_start for duration."""
     conn = get_db()
-    rows = conn.execute("""
+    loop_clause = "AND d.loop_id = ?" if loop_id is not None else ""
+    params = (loop_id, limit) if loop_id is not None else (limit,)
+    rows = conn.execute(f"""
         SELECT
             d.id, d.project, d.role, d.model, d.event_type,
             d.issue_number, d.pr_number, d.detail, d.created_at AS completed_at,
@@ -485,10 +487,11 @@ def history(limit: int = 50):
             AND v.reason LIKE '%auto: ' || d.event_type || '%'
             AND v.created_at >= d.created_at
             AND v.id = (SELECT MIN(v2.id) FROM verdicts v2 WHERE v2.project=d.project AND v2.role=d.role AND v2.created_at >= d.created_at AND v2.reason LIKE '%auto: ' || d.event_type || '%')
-        WHERE d.event_type LIKE '%_done' OR d.event_type LIKE '%_pass' OR d.event_type LIKE '%_failed'
+        WHERE (d.event_type LIKE '%_done' OR d.event_type LIKE '%_pass' OR d.event_type LIKE '%_failed')
+        {loop_clause}
         ORDER BY d.id DESC
         LIMIT ?
-    """, (limit,)).fetchall()
+    """, params).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -513,13 +516,21 @@ def active():
 
 
 @app.get("/api/feed")
-def feed():
+def feed(loop_id: Optional[str] = None):
     conn = get_db()
-    rows = conn.execute(
-        """SELECT id, project, role, model, event_type, issue_number, pr_number,
-                  detail, payload, created_at
-           FROM events ORDER BY id DESC LIMIT 50"""
-    ).fetchall()
+    if loop_id is not None:
+        rows = conn.execute(
+            """SELECT id, project, role, model, event_type, issue_number, pr_number,
+                      detail, payload, created_at
+               FROM events WHERE loop_id = ? ORDER BY id DESC LIMIT 50""",
+            (loop_id,),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """SELECT id, project, role, model, event_type, issue_number, pr_number,
+                      detail, payload, created_at
+               FROM events ORDER BY id DESC LIMIT 50"""
+        ).fetchall()
     conn.close()
     now = datetime.now(timezone.utc)
     result = []
