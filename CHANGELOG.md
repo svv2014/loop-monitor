@@ -10,6 +10,9 @@ its own version (currently `1.0`) baked into every payload.
 
 ## [Unreleased]
 
+
+### Changed
+- Draft: [LM-18] Timeline: per-event cumulative time and feed age_seconds (#20)
 ## [0.1.1] - 2026-04-27
 
 Catch-up release. v0.1.0 shipped a stale embedded copy of bounty-monitor
