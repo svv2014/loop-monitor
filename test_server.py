@@ -446,3 +446,122 @@ def test_cycle_times_with_data(isolated_client):
     # issue_lifetime and pr_lifetime are null because columns not set
     assert data["issue_lifetime"] is None
     assert data["pr_lifetime"] is None
+
+
+# ── /api/loops and health loop_ids tests ──
+
+def test_loops_empty_db(isolated_client):
+    resp = isolated_client.get("/api/loops")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_loops_with_data(isolated_client):
+    import sqlite3
+    now = "2026-01-01T00:00:00+00:00"
+    conn = sqlite3.connect(server.DB_PATH)
+    conn.executemany(
+        "INSERT INTO events (project, role, event_type, created_at, loop_id, core_version) VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            ("p", "dev", "dev_done", now, "loop-1", "0.1.0"),
+            ("p", "dev", "dev_done", now, "loop-1", "0.2.0"),
+            ("p", "dev", "dev_done", now, None, "0.1.0"),
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+    resp = isolated_client.get("/api/loops")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 2
+
+    unknown = next(r for r in data if r["loop_id"] == "(unknown)")
+    assert unknown["event_count"] == 1
+
+    loop1 = next(r for r in data if r["loop_id"] == "loop-1")
+    assert loop1["event_count"] == 2
+    assert sorted(loop1["core_versions"]) == ["0.1.0", "0.2.0"]
+
+
+def test_health_loop_ids_field(isolated_client):
+    import sqlite3
+    now = "2026-01-01T00:00:00+00:00"
+    conn = sqlite3.connect(server.DB_PATH)
+    conn.executemany(
+        "INSERT INTO events (project, role, event_type, created_at, loop_id) VALUES (?, ?, ?, ?, ?)",
+        [
+            ("p", "dev", "dev_done", now, "loop-a"),
+            ("p", "dev", "dev_done", now, None),
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+    resp = isolated_client.get("/api/health")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "loop_ids" in data
+    assert "loop-a" in data["loop_ids"]
+
+
+def test_health_loop_ids_empty_db(isolated_client):
+    resp = isolated_client.get("/api/health")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "loop_ids" in data
+    assert data["loop_ids"] == []
+
+
+# ── ?loop_id filtering on /api/feed and /api/history ──
+
+def test_feed_loop_id_filter(isolated_client):
+    import sqlite3
+    now = "2026-01-01T00:00:00+00:00"
+    conn = sqlite3.connect(server.DB_PATH)
+    conn.executemany(
+        "INSERT INTO events (project, role, event_type, created_at, loop_id) VALUES (?, ?, ?, ?, ?)",
+        [
+            ("p", "dev", "ev_a", now, "loop-x"),
+            ("p", "dev", "ev_b", now, "loop-y"),
+            ("p", "dev", "ev_c", now, None),
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+    resp = isolated_client.get("/api/feed?loop_id=loop-x")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert all(r["event_type"] == "ev_a" for r in data if r["project"] == "p")
+    assert not any(r["event_type"] == "ev_b" for r in data)
+
+    resp_all = isolated_client.get("/api/feed")
+    assert resp_all.status_code == 200
+    types = {r["event_type"] for r in resp_all.json() if r["project"] == "p"}
+    assert {"ev_a", "ev_b", "ev_c"}.issubset(types)
+
+
+def test_history_loop_id_filter(isolated_client):
+    import sqlite3
+    now = "2026-01-01T00:00:00+00:00"
+    conn = sqlite3.connect(server.DB_PATH)
+    conn.executemany(
+        "INSERT INTO events (project, role, event_type, created_at, loop_id) VALUES (?, ?, ?, ?, ?)",
+        [
+            ("ph", "dev", "build_done", now, "loop-alpha"),
+            ("ph", "dev", "build_done", now, "loop-beta"),
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+    resp = isolated_client.get("/api/history?loop_id=loop-alpha")
+    assert resp.status_code == 200
+    proj_rows = [r for r in resp.json() if r["project"] == "ph"]
+    assert len(proj_rows) == 1
+
+    resp_all = isolated_client.get("/api/history")
+    assert resp_all.status_code == 200
+    all_proj = [r for r in resp_all.json() if r["project"] == "ph"]
+    assert len(all_proj) == 2
