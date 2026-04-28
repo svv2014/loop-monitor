@@ -21,6 +21,33 @@ pip install -r requirements.txt
 uvicorn server:app --host 127.0.0.1 --port 18792 --reload
 ```
 
+## Code quality
+
+This repo uses [ruff](https://docs.astral.sh/ruff/) for linting/formatting and
+[mypy](https://mypy.readthedocs.io/) for type checking.
+
+**One-time setup** — install the pre-commit hooks so checks run automatically before every commit:
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+**Run checks manually:**
+
+```bash
+# Lint + format check
+ruff check .
+
+# Type check (server only)
+mypy server.py
+
+# Run all pre-commit hooks against every file
+pre-commit run --all-files
+```
+
+CI runs `ruff check .` and `mypy server.py` on every PR and push to `main`.
+
 Open http://127.0.0.1:18792.
 
 ## Tests

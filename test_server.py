@@ -1,17 +1,19 @@
 import os
 import tempfile
+
 import pytest
 
 # Use a temp file so all get_db() calls share state
 _db_fd, _db_path = tempfile.mkstemp(suffix=".db")
 os.close(_db_fd)
 
-import server
+import server  # noqa: E402
+
 server.DB_PATH = _db_path
 server.apply_pending_migrations()
 
-from fastapi.testclient import TestClient
-from server import app
+from fastapi.testclient import TestClient  # noqa: E402,I001
+from server import app  # noqa: E402,I001
 
 client = TestClient(app)
 
@@ -292,11 +294,12 @@ def test_missing_api_accepted_with_warning(isolated_client, caplog):
 
 def test_loop_id_persisted(isolated_client):
     import sqlite3
+    import time
     isolated_client.post("/api/report", json={
         "project": "proj-li", "role": "dev", "event_type": "dev_start",
         "loop_id": "my-loop",
     })
-    import time; time.sleep(0.05)  # background task
+    time.sleep(0.05)  # background task
     conn = sqlite3.connect(server.DB_PATH)
     row = conn.execute(
         "SELECT loop_id FROM events WHERE project='proj-li' AND loop_id='my-loop'"
@@ -308,10 +311,11 @@ def test_loop_id_persisted(isolated_client):
 
 def test_loop_id_null_when_absent(isolated_client):
     import sqlite3
+    import time
     isolated_client.post("/api/report", json={
         "project": "proj-li2", "role": "dev", "event_type": "dev_start",
     })
-    import time; time.sleep(0.05)  # background task
+    time.sleep(0.05)  # background task
     conn = sqlite3.connect(server.DB_PATH)
     row = conn.execute(
         "SELECT loop_id FROM events WHERE project='proj-li2'"
@@ -350,7 +354,6 @@ def test_loops_empty_db(isolated_client):
 
 
 def test_loops_with_data(isolated_client):
-    import sqlite3
     import time
     isolated_client.post("/api/report", json={
         "api": "1.0", "project": "p", "role": "dev", "event_type": "dev_done",
@@ -412,10 +415,11 @@ def test_health_loop_ids_empty_db(isolated_client):
 
 def test_timeline_cumulative_seconds(isolated_client):
     """cumulative_seconds on each event is elapsed from the first event."""
-    import time as _time
     # Insert start then done events with a known gap via _insert_event
     # Use direct DB insertion with controlled timestamps for determinism
-    import sqlite3, server as _srv
+    import sqlite3
+
+    import server as _srv
     conn = sqlite3.connect(_srv.DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute(

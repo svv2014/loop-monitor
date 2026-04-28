@@ -1,0 +1,11 @@
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.mypy]
+strict_optional = true
+warn_unused_ignores = true
+ignore_missing_imports = true
