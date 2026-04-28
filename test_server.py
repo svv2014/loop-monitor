@@ -202,6 +202,19 @@ def test_stats_with_runs(isolated_client):
     assert "rework_rate" in data
 
 
+def test_timeline_pr_fallback_no_pipeline_run(isolated_client):
+    isolated_client.post("/api/report", json={
+        "project": "proj-pr", "role": "reviewer", "event_type": "started", "pr_num": 42
+    })
+    response = isolated_client.get("/api/stats/timeline/pr/proj-pr/42")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["pr_number"] == 42
+    assert data["project"] == "proj-pr"
+    assert data["issue_number"] is None
+    assert len(data["events"]) > 0
+
+
 def test_pipeline_run_not_duplicated(isolated_client):
     server._insert_event(server.ReportPayload(
         project="proj-nd", role="planner", event_type="started", issue_number=50
