@@ -1,6 +1,9 @@
 import logging
+import os
 import sqlite3
 import json
+import urllib.request
+import urllib.error
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 from typing import Optional, Any
@@ -935,6 +938,72 @@ def get_cycle_times(slug: str):
         "issue_lifetime": _percentile_stats(issue_vals) if issue_vals else None,
         "pr_lifetime": _percentile_stats(pr_vals) if pr_vals else None,
     }
+
+
+_claude_usage_cache: dict = {}
+
+ANTHROPIC_USAGE_URL = "https://api.anthropic.com/v1/usage"
+
+
+def _fetch_claude_usage() -> dict:
+    key = os.environ.get("ANTHROPIC_ADMIN_KEY", "")
+    if not key:
+        return {"enabled": True, "error": "ANTHROPIC_ADMIN_KEY not set"}
+    req = urllib.request.Request(
+        ANTHROPIC_USAGE_URL,
+        headers={
+            "anthropic-api-key": key,
+            "anthropic-version": "2023-06-01",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            body = json.loads(resp.read().decode())
+    except urllib.error.HTTPError as exc:
+        return {"enabled": True, "error": f"upstream HTTP {exc.code}"}
+    except Exception as exc:
+        return {"enabled": True, "error": str(exc)}
+
+    quota_used = body.get("total_tokens_used") or body.get("tokens_used")
+    quota_limit = body.get("token_limit") or body.get("quota")
+    reset_at = body.get("reset_at") or body.get("period_end")
+    cache_tokens_used = body.get("cache_read_tokens")
+    cache_hit_pct = None
+    if cache_tokens_used is not None and quota_used:
+        cache_hit_pct = round(100.0 * cache_tokens_used / quota_used, 2)
+
+    quota_pct = None
+    if quota_used is not None and quota_limit:
+        quota_pct = round(100.0 * quota_used / quota_limit, 2)
+
+    return {
+        "enabled": True,
+        "quota_used": quota_used,
+        "quota_limit": quota_limit,
+        "quota_pct": quota_pct,
+        "reset_at": reset_at,
+        "cache_hit_pct": cache_hit_pct,
+    }
+
+
+@app.get("/api/claude_usage")
+def claude_usage():
+    if os.environ.get("CLAUDE_USAGE_ENABLED", "").lower() not in ("1", "true", "yes"):
+        return {"enabled": False}
+
+    refresh = int(os.environ.get("CLAUDE_USAGE_REFRESH_SECONDS", "300"))
+    now = datetime.now(timezone.utc)
+    cached = _claude_usage_cache.get("data")
+    fetched_at = _claude_usage_cache.get("fetched_at")
+    if cached is not None and fetched_at is not None:
+        age = (now - fetched_at).total_seconds()
+        if age < refresh:
+            return cached
+
+    result = _fetch_claude_usage()
+    _claude_usage_cache["data"] = result
+    _claude_usage_cache["fetched_at"] = now
+    return result
 
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

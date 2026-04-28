@@ -513,3 +513,62 @@ def test_cycle_times_with_data(isolated_client):
     # issue_lifetime and pr_lifetime are null because columns not set
     assert data["issue_lifetime"] is None
     assert data["pr_lifetime"] is None
+
+
+# ── /api/claude_usage tests ──
+
+def test_claude_usage_disabled_by_default(isolated_client, monkeypatch):
+    monkeypatch.delenv("CLAUDE_USAGE_ENABLED", raising=False)
+    resp = isolated_client.get("/api/claude_usage")
+    assert resp.status_code == 200
+    assert resp.json() == {"enabled": False}
+
+
+def test_claude_usage_enabled_returns_correct_shape(isolated_client, monkeypatch):
+    import server as _srv
+    import json as _json
+
+    monkeypatch.setenv("CLAUDE_USAGE_ENABLED", "true")
+    monkeypatch.setenv("ANTHROPIC_ADMIN_KEY", "test-key")
+
+    fake_body = _json.dumps({
+        "total_tokens_used": 500000,
+        "token_limit": 1000000,
+        "reset_at": "2026-05-01T00:00:00Z",
+        "cache_read_tokens": 100000,
+    }).encode()
+
+    class FakeResponse:
+        def read(self):
+            return fake_body
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+
+    monkeypatch.setattr(_srv.urllib.request, "urlopen", lambda req, timeout=None: FakeResponse())
+    _srv._claude_usage_cache.clear()
+
+    resp = isolated_client.get("/api/claude_usage")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["enabled"] is True
+    assert data["quota_used"] == 500000
+    assert data["quota_limit"] == 1000000
+    assert data["quota_pct"] == 50.0
+    assert data["reset_at"] == "2026-05-01T00:00:00Z"
+    assert data["cache_hit_pct"] == 20.0
+
+
+def test_claude_usage_error_on_missing_key(isolated_client, monkeypatch):
+    import server as _srv
+
+    monkeypatch.setenv("CLAUDE_USAGE_ENABLED", "true")
+    monkeypatch.delenv("ANTHROPIC_ADMIN_KEY", raising=False)
+    _srv._claude_usage_cache.clear()
+
+    resp = isolated_client.get("/api/claude_usage")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["enabled"] is True
+    assert "error" in data
