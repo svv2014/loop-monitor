@@ -867,4 +867,20 @@ def get_projects():
     return [{"project": p, "repo": r} for p, r in PROJECTS.items() if p in active]
 
 
+@app.get("/api/events_graph")
+def get_events_graph(window: int = 24):
+    window = max(1, min(window, 168))
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT strftime('%Y-%m-%dT%H:00:00', created_at) AS hour, role, COUNT(*) AS count
+           FROM events
+           WHERE created_at > datetime('now', ? || ' hours')
+           GROUP BY hour, role
+           ORDER BY hour""",
+        (f"-{window}",),
+    ).fetchall()
+    conn.close()
+    return {"window_hours": window, "buckets": [dict(r) for r in rows]}
+
+
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
