@@ -103,6 +103,33 @@ this on every pipeline state change.
 
 `core_version_counts` — map of Loop core version → event count, built from ingested events.
 
+## Data Retention
+
+`bounty.db` grows at ~600 events/day. Run `scripts/prune.py` nightly to keep it bounded.
+
+```bash
+python scripts/prune.py --db bounty.db
+python scripts/prune.py --db bounty.db --dry-run   # preview without deleting
+```
+
+**Default horizons:**
+
+| Table           | Env var                     | Default |
+|-----------------|-----------------------------|---------|
+| `events`        | `RETAIN_EVENTS_DAYS`        | 90 days |
+| `verdicts`      | `RETAIN_VERDICTS_DAYS`      | 365 days |
+| `scores`        | `RETAIN_SCORES_DAYS`        | 365 days |
+| `issue_history` | `RETAIN_ISSUE_HISTORY_DAYS` | 90 days |
+| `pipeline_runs` | `RETAIN_PIPELINE_RUNS_DAYS` | 365 days |
+
+Events tied to an in-progress pipeline run are never pruned, regardless of age.
+
+**Schedule via cron** (daily at 03:00):
+
+```cron
+0 3 * * * python /path/to/loop-monitor/scripts/prune.py --db /path/to/bounty.db
+```
+
 ## Scripts
 
 ### `scripts/release.sh patch|minor|major`
