@@ -15,6 +15,7 @@ its own version (currently `1.0`) baked into every payload.
 - Draft: [LM-18] Timeline: per-event cumulative time and feed age_seconds (#20)
 - Draft: [LM-19] Mark PR/issue as finished; report open→close lifecycle time (#23)
 - [LM-62] Add GET /api/events_graph — 24h bucketed event counts by stage (#71)
+- [LM-56] Add Claude usage panel to dashboard (#72)
 ## [0.1.1] - 2026-04-27
 
 Catch-up release. v0.1.0 shipped a stale embedded copy of bounty-monitor
