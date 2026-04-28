@@ -93,6 +93,7 @@ def init_db():
         ("pr_number", "INTEGER"),
         ("detail", "TEXT"),
         ("core_version", "TEXT"),
+        ("loop_id", "TEXT"),
     ]:
         if col not in cols:
             conn.execute(f"ALTER TABLE events ADD COLUMN {col} {defn}")
@@ -137,6 +138,7 @@ class ReportPayload(BaseModel):
     detail: Optional[str] = None
     duration_seconds: Optional[int] = None
     rework_count: Optional[int] = None
+    loop_id: Optional[str] = None
 
     class Config:
         extra = "ignore"
@@ -225,8 +227,8 @@ def _insert_event(data: ReportPayload):
     now = datetime.now(timezone.utc).isoformat()
     conn.execute(
         """INSERT INTO events
-           (project, role, model, event_type, issue_number, pr_number, detail, payload, core_version, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           (project, role, model, event_type, issue_number, pr_number, detail, payload, core_version, loop_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             data.project,
             data.role,
@@ -237,6 +239,7 @@ def _insert_event(data: ReportPayload):
             data.detail,
             json.dumps(data.payload) if data.payload else None,
             data.core_version,
+            data.loop_id,
             now,
         ),
     )
@@ -334,14 +337,41 @@ def health():
     rows = conn.execute(
         "SELECT core_version, COUNT(*) as cnt FROM events WHERE core_version IS NOT NULL GROUP BY core_version"
     ).fetchall()
-    conn.close()
     core_version_counts = {r["core_version"]: r["cnt"] for r in rows}
+    loop_rows = conn.execute(
+        "SELECT DISTINCT COALESCE(loop_id, '(unknown)') AS loop_id FROM events ORDER BY loop_id"
+    ).fetchall()
+    loop_ids = [r["loop_id"] for r in loop_rows]
+    conn.close()
     return {
         "status": "ok",
         "monitor_version": MONITOR_VERSION,
         "supported_bounty_api": f"{SUPPORTED_API_MAJOR}.x",
         "core_version_counts": core_version_counts,
+        "loop_ids": loop_ids,
     }
+
+
+@app.get("/api/loops")
+def get_loops():
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT COALESCE(loop_id, '(unknown)') AS loop_id,
+               MAX(created_at) AS last_seen,
+               COUNT(*) AS event_count,
+               GROUP_CONCAT(DISTINCT core_version) AS core_versions
+        FROM events
+        GROUP BY COALESCE(loop_id, '(unknown)')
+        ORDER BY 1
+    """).fetchall()
+    conn.close()
+    result = []
+    for r in rows:
+        entry = dict(r)
+        raw = entry.get("core_versions") or ""
+        entry["core_versions"] = sorted(set(v for v in raw.split(",") if v)) if raw else []
+        result.append(entry)
+    return result
 
 
 @app.post("/api/report", status_code=202)
@@ -381,10 +411,12 @@ def board():
 
 
 @app.get("/api/history")
-def history(limit: int = 50):
+def history(limit: int = 50, loop_id: Optional[str] = None):
     """Completed jobs: *_done/*_pass events paired with their *_start for duration."""
     conn = get_db()
-    rows = conn.execute("""
+    loop_filter = "AND d.loop_id = ?" if loop_id is not None else ""
+    params = (loop_id, limit) if loop_id is not None else (limit,)
+    rows = conn.execute(f"""
         SELECT
             d.id, d.project, d.role, d.model, d.event_type,
             d.issue_number, d.pr_number, d.detail, d.created_at AS completed_at,
@@ -409,10 +441,11 @@ def history(limit: int = 50):
             AND v.reason LIKE '%auto: ' || d.event_type || '%'
             AND v.created_at >= d.created_at
             AND v.id = (SELECT MIN(v2.id) FROM verdicts v2 WHERE v2.project=d.project AND v2.role=d.role AND v2.created_at >= d.created_at AND v2.reason LIKE '%auto: ' || d.event_type || '%')
-        WHERE d.event_type LIKE '%_done' OR d.event_type LIKE '%_pass' OR d.event_type LIKE '%_failed'
+        WHERE (d.event_type LIKE '%_done' OR d.event_type LIKE '%_pass' OR d.event_type LIKE '%_failed')
+        {loop_filter}
         ORDER BY d.id DESC
         LIMIT ?
-    """, (limit,)).fetchall()
+    """, params).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -437,13 +470,21 @@ def active():
 
 
 @app.get("/api/feed")
-def feed():
+def feed(loop_id: Optional[str] = None):
     conn = get_db()
-    rows = conn.execute(
-        """SELECT id, project, role, model, event_type, issue_number, pr_number,
-                  detail, payload, created_at
-           FROM events ORDER BY id DESC LIMIT 50"""
-    ).fetchall()
+    if loop_id is not None:
+        rows = conn.execute(
+            """SELECT id, project, role, model, event_type, issue_number, pr_number,
+                      detail, payload, created_at
+               FROM events WHERE loop_id = ? ORDER BY id DESC LIMIT 50""",
+            (loop_id,),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """SELECT id, project, role, model, event_type, issue_number, pr_number,
+                      detail, payload, created_at
+               FROM events ORDER BY id DESC LIMIT 50"""
+        ).fetchall()
     conn.close()
     result = []
     for r in rows:

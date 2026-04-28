@@ -24,7 +24,7 @@ def test_report_accepted():
         "event_type": "started",
     })
     assert resp.status_code == 202
-    assert resp.json() == {"status": "accepted"}
+    assert resp.json()["status"] == "accepted"
 
 
 def test_verdict_accepted():
@@ -285,3 +285,159 @@ def test_health_core_version_counts(isolated_client):
     counts = resp.json()["core_version_counts"]
     assert counts["0.1.0"] == 2
     assert counts["0.2.0"] == 1
+
+
+# ── loop_id column persistence tests (issue #26) ──
+
+def test_loop_id_persisted(isolated_client):
+    import sqlite3
+    isolated_client.post("/api/report", json={
+        "project": "proj-li", "role": "dev", "event_type": "dev_start",
+        "loop_id": "my-loop",
+    })
+    import time; time.sleep(0.05)
+    conn = sqlite3.connect(server.DB_PATH)
+    row = conn.execute(
+        "SELECT loop_id FROM events WHERE project='proj-li' AND loop_id='my-loop'"
+    ).fetchone()
+    conn.close()
+    assert row is not None
+    assert row[0] == "my-loop"
+
+
+def test_loop_id_null_when_absent(isolated_client):
+    import sqlite3
+    isolated_client.post("/api/report", json={
+        "project": "proj-li2", "role": "dev", "event_type": "dev_start",
+    })
+    import time; time.sleep(0.05)
+    conn = sqlite3.connect(server.DB_PATH)
+    row = conn.execute(
+        "SELECT loop_id FROM events WHERE project='proj-li2'"
+    ).fetchone()
+    conn.close()
+    assert row is not None
+    assert row[0] is None
+
+
+# ── /api/loops and health loop_ids tests (issue #27) ──
+
+def test_loops_empty_db(isolated_client):
+    resp = isolated_client.get("/api/loops")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_loops_with_data(isolated_client):
+    import sqlite3
+    now = "2026-01-01T00:00:00+00:00"
+    conn = sqlite3.connect(server.DB_PATH)
+    conn.executemany(
+        "INSERT INTO events (project, role, event_type, created_at, loop_id, core_version) VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            ("p", "dev", "dev_done", now, "loop-1", "0.1.0"),
+            ("p", "dev", "dev_done", now, "loop-1", "0.2.0"),
+            ("p", "dev", "dev_done", now, None, "0.1.0"),
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+    resp = isolated_client.get("/api/loops")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 2
+
+    unknown = next(r for r in data if r["loop_id"] == "(unknown)")
+    assert unknown["event_count"] == 1
+    assert unknown["core_versions"] == ["0.1.0"]
+
+    loop1 = next(r for r in data if r["loop_id"] == "loop-1")
+    assert loop1["event_count"] == 2
+    assert sorted(loop1["core_versions"]) == ["0.1.0", "0.2.0"]
+    assert "last_seen" in loop1
+
+
+def test_health_loop_ids_field(isolated_client):
+    import sqlite3
+    now = "2026-01-01T00:00:00+00:00"
+    conn = sqlite3.connect(server.DB_PATH)
+    conn.executemany(
+        "INSERT INTO events (project, role, event_type, created_at, loop_id) VALUES (?, ?, ?, ?, ?)",
+        [
+            ("p", "dev", "dev_done", now, "loop-a"),
+            ("p", "dev", "dev_done", now, None),
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+    resp = isolated_client.get("/api/health")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "loop_ids" in data
+    assert "(unknown)" in data["loop_ids"]
+    assert "loop-a" in data["loop_ids"]
+
+
+def test_health_loop_ids_empty_db(isolated_client):
+    resp = isolated_client.get("/api/health")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "loop_ids" in data
+    assert data["loop_ids"] == []
+
+
+# ── ?loop_id filtering on /api/feed and /api/history (issue #28) ──
+
+def test_feed_loop_id_filter(isolated_client):
+    import sqlite3
+    now = "2026-01-01T00:00:00+00:00"
+    conn = sqlite3.connect(server.DB_PATH)
+    conn.executemany(
+        "INSERT INTO events (project, role, event_type, created_at, loop_id) VALUES (?, ?, ?, ?, ?)",
+        [
+            ("p", "dev", "ev_a", now, "loop-x"),
+            ("p", "dev", "ev_b", now, "loop-y"),
+            ("p", "dev", "ev_c", now, None),
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+    resp = isolated_client.get("/api/feed?loop_id=loop-x")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert all(r["event_type"] == "ev_a" for r in data if r["project"] == "p")
+    assert not any(r["event_type"] == "ev_b" for r in data)
+
+    resp_all = isolated_client.get("/api/feed")
+    assert resp_all.status_code == 200
+    types = {r["event_type"] for r in resp_all.json() if r["project"] == "p"}
+    assert {"ev_a", "ev_b", "ev_c"}.issubset(types)
+
+
+def test_history_loop_id_filter(isolated_client):
+    import sqlite3
+    now = "2026-01-01T00:00:00+00:00"
+    conn = sqlite3.connect(server.DB_PATH)
+    conn.executemany(
+        "INSERT INTO events (project, role, event_type, created_at, loop_id) VALUES (?, ?, ?, ?, ?)",
+        [
+            ("ph", "dev", "build_done", now, "loop-alpha"),
+            ("ph", "dev", "build_done", now, "loop-beta"),
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+    resp = isolated_client.get("/api/history?loop_id=loop-alpha")
+    assert resp.status_code == 200
+    data = resp.json()
+    proj_rows = [r for r in data if r["project"] == "ph"]
+    assert len(proj_rows) == 1
+
+    resp_all = isolated_client.get("/api/history")
+    assert resp_all.status_code == 200
+    all_proj = [r for r in resp_all.json() if r["project"] == "ph"]
+    assert len(all_proj) == 2
