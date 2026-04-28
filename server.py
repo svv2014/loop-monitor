@@ -97,6 +97,15 @@ def init_db():
         if col not in cols:
             conn.execute(f"ALTER TABLE events ADD COLUMN {col} {defn}")
 
+    # Migrate pipeline_runs table if new columns are missing
+    pr_cols = {row[1] for row in conn.execute("PRAGMA table_info(pipeline_runs)")}
+    for col, defn in [
+        ("issue_lifetime_seconds", "INTEGER"),
+        ("pr_lifetime_seconds", "INTEGER"),
+    ]:
+        if col not in pr_cols:
+            conn.execute(f"ALTER TABLE pipeline_runs ADD COLUMN {col} {defn}")
+
     conn.commit()
     conn.close()
 
@@ -286,6 +295,35 @@ def _insert_event(data: ReportPayload):
                    (project, issue_number, pr_number, started_at, completed_at, created_at)
                    VALUES (?, ?, ?, ?, ?, ?)""",
                 (data.project, data.issue_number, data.pr_number, now, now, now),
+            )
+
+    if data.event_type == "finished" and data.issue_number is not None:
+        now_dt = datetime.fromisoformat(now)
+        run = conn.execute(
+            "SELECT id, started_at FROM pipeline_runs WHERE project=? AND issue_number=? ORDER BY id DESC LIMIT 1",
+            (data.project, data.issue_number),
+        ).fetchone()
+        if run:
+            try:
+                started = datetime.fromisoformat(run["started_at"].replace("Z", "+00:00"))
+                issue_secs = int((now_dt - started).total_seconds())
+            except Exception:
+                issue_secs = None
+            first_pr = conn.execute(
+                "SELECT created_at FROM issue_history WHERE project=? AND issue_number=? AND pr_number IS NOT NULL ORDER BY id ASC LIMIT 1",
+                (data.project, data.issue_number),
+            ).fetchone()
+            pr_secs = None
+            if first_pr:
+                try:
+                    pr_start = datetime.fromisoformat(first_pr["created_at"].replace("Z", "+00:00"))
+                    pr_secs = int((now_dt - pr_start).total_seconds())
+                except Exception:
+                    pass
+            conn.execute(
+                """UPDATE pipeline_runs SET outcome=?, completed_at=?, issue_lifetime_seconds=?, pr_lifetime_seconds=?
+                   WHERE id=?""",
+                (data.detail or "finished", now, issue_secs, pr_secs, run["id"]),
             )
 
     _auto_bounty(conn, data, now)
@@ -505,8 +543,13 @@ def get_history(project: str, issue: int):
            ORDER BY id ASC""",
         (project, issue),
     ).fetchall()
+    run_row = conn.execute(
+        """SELECT outcome, issue_lifetime_seconds, pr_lifetime_seconds, completed_at
+           FROM pipeline_runs WHERE project=? AND issue_number=? ORDER BY id DESC LIMIT 1""",
+        (project, issue),
+    ).fetchone()
     conn.close()
-    return [dict(r) for r in rows]
+    return {"events": [dict(r) for r in rows], "run": dict(run_row) if run_row else None}
 
 
 @app.get("/api/runs")
@@ -591,7 +634,8 @@ def get_timeline(project: str, issue: int):
     conn = get_db()
 
     summary_row = conn.execute(
-        """SELECT title, outcome, total_duration_seconds, rework_count, pr_number
+        """SELECT title, outcome, total_duration_seconds, rework_count, pr_number,
+                  issue_lifetime_seconds, pr_lifetime_seconds
            FROM pipeline_runs
            WHERE project=? AND issue_number=?
            ORDER BY id DESC LIMIT 1""",
