@@ -486,6 +486,48 @@
     }
     a.gh-link:hover { text-decoration: underline; }
 
+    /* ── 24h Events Activity Graph ── */
+    #events-graph-section {
+      max-width: 1400px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 20px 24px 0;
+    }
+
+    #events-graph-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px 10px;
+    }
+
+    #events-graph-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    #events-graph-legend {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    #graph-tooltip {
+      display: none;
+      position: fixed;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: 0.72rem;
+      color: var(--text);
+      pointer-events: none;
+      z-index: 500;
+      white-space: nowrap;
+    }
+
     /* ── Project link in card ── */
     .project-name-link {
       color: var(--text);
@@ -727,6 +769,16 @@
   </div>
 </header>
 
+<section id="events-graph-section" style="display:none">
+  <div id="events-graph-card">
+    <div id="events-graph-header">
+      <div class="section-title" style="margin-bottom:0">24h Pipeline Activity</div>
+      <div id="events-graph-legend"></div>
+    </div>
+    <div id="events-graph-svg"></div>
+  </div>
+</section>
+
 <main>
   <!-- Agent cards -->
   <!-- Active Workers -->
@@ -850,6 +902,7 @@
   </div>
 </section>
 
+<div id="graph-tooltip"></div>
 <div id="drawer-backdrop" class="drawer-backdrop"></div>
 <div id="timeline-drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
   <div class="drawer-header">
@@ -909,6 +962,112 @@
   function shortModel(model) {
     if (!model) return '—';
     return model.replace(/^claude-/, '').replace(/-\d{8}$/, '');
+  }
+
+  // ── Stage colours for 24h graph ──
+  let eventsGraphVisible = false;
+
+  const STAGE_COLORS = {
+    po:      '#6366f1',
+    dev:     '#22d3ee',
+    review:  '#fbbf24',
+    qa:      '#34d399',
+    merge:   '#4ade80',
+    rework:  '#f59e0b',
+    unknown: '#6b7590',
+  };
+  const STAGE_ORDER = ['po', 'dev', 'review', 'qa', 'merge', 'rework', 'unknown'];
+
+  function renderEventsGraph(data) {
+    const section = document.getElementById('events-graph-section');
+    if (!data || !data.buckets) { section.style.display = 'none'; eventsGraphVisible = false; return; }
+    section.style.display = '';
+    eventsGraphVisible = true;
+
+    const buckets = data.buckets || [];
+    const windowHours = data.window_hours || 24;
+
+    // Build hour key slots for the last windowHours hours (truncated to hour)
+    const now = new Date();
+    now.setMinutes(0, 0, 0);
+    const slots = [];
+    for (let i = windowHours - 1; i >= 0; i--) {
+      const d = new Date(now.getTime() - i * 3600000);
+      slots.push(d.toISOString().slice(0, 13)); // "2026-04-28T14"
+    }
+
+    // Build lookup: hourKey -> role -> count
+    const lookup = {};
+    const rolesFound = new Set();
+    for (const b of buckets) {
+      const key = b.hour.slice(0, 13);
+      if (!lookup[key]) lookup[key] = {};
+      lookup[key][b.role] = (lookup[key][b.role] || 0) + b.count;
+      rolesFound.add(b.role);
+    }
+
+    const roles = STAGE_ORDER.filter(r => rolesFound.has(r));
+    for (const r of rolesFound) if (!STAGE_ORDER.includes(r)) roles.push(r);
+
+    // Max stack height across all slots
+    let maxCount = 1;
+    for (const slot of slots) {
+      const byRole = lookup[slot] || {};
+      const total = Object.values(byRole).reduce((s, v) => s + v, 0);
+      if (total > maxCount) maxCount = total;
+    }
+
+    const W = 1200, H = 140;
+    const PL = 30, PR = 8, PT = 8, PB = 22;
+    const bW = (W - PL - PR) / windowHours;
+    const GAP = Math.max(1, bW * 0.12);
+    const bAreaH = H - PT - PB;
+
+    let svgContent = '';
+
+    // Y grid lines & labels at 0, 50%, 100%
+    for (const frac of [0, 0.5, 1]) {
+      const v = Math.round(frac * maxCount);
+      const y = PT + bAreaH - frac * bAreaH;
+      svgContent += `<line x1="${PL}" y1="${y.toFixed(1)}" x2="${W - PR}" y2="${y.toFixed(1)}" stroke="#2a2f3d" stroke-width="1"/>`;
+      svgContent += `<text x="${PL - 4}" y="${(y + 3).toFixed(1)}" fill="#6b7590" font-size="9" text-anchor="end">${v}</text>`;
+    }
+
+    // Stacked bars
+    for (let i = 0; i < slots.length; i++) {
+      const slot = slots[i];
+      const byRole = lookup[slot] || {};
+      const x = PL + i * bW + GAP / 2;
+      const w = Math.max(1, bW - GAP);
+      let yTop = PT + bAreaH;
+
+      // Draw roles bottom-to-top by reversing order (so legend order = visual order from bottom)
+      for (let ri = roles.length - 1; ri >= 0; ri--) {
+        const role = roles[ri];
+        const count = byRole[role] || 0;
+        if (!count) continue;
+        const rh = (count / maxCount) * bAreaH;
+        yTop -= rh;
+        const color = STAGE_COLORS[role] || STAGE_COLORS.unknown;
+        const hLabel = slot.slice(11, 13) + ':00';
+        svgContent += `<rect x="${x.toFixed(1)}" y="${yTop.toFixed(1)}" width="${w.toFixed(1)}" height="${rh.toFixed(1)}" fill="${color}" data-h="${hLabel}" data-r="${escHtml(role)}" data-c="${count}" style="cursor:default"/>`;
+      }
+
+      // X-axis label every 6 hours
+      const hr = parseInt(slot.slice(11, 13), 10);
+      if (hr % 6 === 0) {
+        const lx = PL + (i + 0.5) * bW;
+        svgContent += `<text x="${lx.toFixed(1)}" y="${H - 5}" fill="#6b7590" font-size="9" text-anchor="middle">${slot.slice(11, 13)}</text>`;
+      }
+    }
+
+    document.getElementById('events-graph-svg').innerHTML =
+      `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:${H}px;display:block">${svgContent}</svg>`;
+
+    document.getElementById('events-graph-legend').innerHTML = roles.map(r => {
+      const c = STAGE_COLORS[r] || STAGE_COLORS.unknown;
+      return `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${c}"></span><span style="color:var(--muted);font-size:0.68rem">${r}</span></span>`;
+    }).join('');
   }
 
   // ── Chart colour palette (matches CSS vars) ──
@@ -1284,7 +1443,7 @@
   async function fetchAll() {
     try {
       const [boardRes, feedRes, statusRes, verdictsRes, activeRes, historyRes,
-             activityRes, stagesRes, reworkRes, projectsRes] = await Promise.all([
+             activityRes, stagesRes, reworkRes, projectsRes, eventsGraphRes] = await Promise.all([
         fetch('/api/board'),
         fetch('/api/feed'),
         fetch('/api/status'),
@@ -1295,13 +1454,14 @@
         fetch('/api/stats/stages'),
         fetch('/api/stats/rework'),
         fetch('/api/projects'),
+        fetch('/api/events_graph?window=24'),
       ]);
 
       if (!boardRes.ok || !feedRes.ok || !statusRes.ok || !verdictsRes.ok ||
           !activeRes.ok || !historyRes.ok) return;
 
       const [board, feed, status, verdicts, active, hist,
-             activity, stages, rework, projects] = await Promise.all([
+             activity, stages, rework, projects, eventsGraph] = await Promise.all([
         boardRes.json(),
         feedRes.json(),
         statusRes.json(),
@@ -1312,6 +1472,7 @@
         stagesRes.ok   ? stagesRes.json()   : Promise.resolve([]),
         reworkRes.ok   ? reworkRes.json()   : Promise.resolve([]),
         projectsRes.ok ? projectsRes.json() : Promise.resolve([]),
+        eventsGraphRes.ok ? eventsGraphRes.json() : Promise.resolve(null),
       ]);
 
       if (projects.length) {
@@ -1322,6 +1483,7 @@
       activeWorkers = active;
       statusEntries = status;
 
+      renderEventsGraph(eventsGraph);
       renderActive(active);
       renderBoard(board);
       renderAgents();
@@ -1416,14 +1578,16 @@
   const projectPanel   = document.getElementById('project-panel');
   const mainEl         = document.querySelector('main');
   const chartsEl       = document.getElementById('charts-section');
+  const eventsGraphEl  = document.getElementById('events-graph-section');
 
   function showProjectPanel(project) {
     document.getElementById('project-panel-title').textContent = project + ' — Run History';
     document.getElementById('runs-table-body').innerHTML =
       '<tr><td colspan="6" class="empty-state">Loading…</td></tr>';
 
-    mainEl.style.display   = 'none';
-    chartsEl.style.display = 'none';
+    mainEl.style.display        = 'none';
+    chartsEl.style.display      = 'none';
+    eventsGraphEl.style.display = 'none';
     projectPanel.classList.add('active');
 
     history.pushState(null, '', '#project/' + encodeURIComponent(project));
@@ -1439,8 +1603,9 @@
 
   function showHome() {
     projectPanel.classList.remove('active');
-    mainEl.style.display   = '';
-    chartsEl.style.display = '';
+    mainEl.style.display        = '';
+    chartsEl.style.display      = '';
+    eventsGraphEl.style.display = eventsGraphVisible ? '' : 'none';
   }
 
   function renderRunsTable(project, rows) {
@@ -1610,6 +1775,21 @@
     else if (mProject) showProjectPanel(decodeURIComponent(mProject[1]));
     else { closeDrawer(); showHome(); }
   });
+
+  // ── Events graph tooltip ──
+  (function () {
+    const tip = document.getElementById('graph-tooltip');
+    const wrap = document.getElementById('events-graph-svg');
+    wrap.addEventListener('mousemove', e => {
+      const rect = e.target.closest('rect[data-h]');
+      if (!rect) { tip.style.display = 'none'; return; }
+      tip.textContent = `${rect.dataset.h} · ${rect.dataset.r}: ${rect.dataset.c}`;
+      tip.style.display = 'block';
+      tip.style.left = (e.clientX + 14) + 'px';
+      tip.style.top  = (e.clientY - 30) + 'px';
+    });
+    wrap.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+  })();
 
   // ── Init ──
   initCharts();
