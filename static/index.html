@@ -601,6 +601,27 @@
       font-weight: 600;
     }
     .drawer-gh-link:hover { text-decoration: underline; }
+
+    .badge-merged {
+      display: inline-block;
+      font-size: 0.68rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: #0d2c1a;
+      color: var(--green);
+      border: 1px solid #1a4a2a;
+    }
+    .badge-closed {
+      display: inline-block;
+      font-size: 0.68rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: #2d1a1a;
+      color: var(--red);
+      border: 1px solid #4a1a1a;
+    }
   </style>
 </head>
 <body>
@@ -1285,8 +1306,19 @@
     const dur          = sum.total_duration_seconds != null ? fmtDur(sum.total_duration_seconds) : null;
     const reworkCount  = sum.rework_count || 0;
 
+    let lifecycleBadge = '';
+    if (sum.outcome && sum.issue_lifetime_seconds != null) {
+      const mins = Math.round(sum.issue_lifetime_seconds / 60);
+      const label = mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
+      const isMerged = sum.outcome === 'merged';
+      const badgeClass = isMerged ? 'badge-merged' : 'badge-closed';
+      const verb = isMerged ? 'merged' : 'closed';
+      lifecycleBadge = `<span class="${badgeClass}">${verb} in ${label}</span>`;
+    }
+
     document.getElementById('drawer-meta').innerHTML = [
       `<span class="verdict-pts ${outcomeClass}">${escHtml(outcomeLabel)}</span>`,
+      lifecycleBadge,
       dur ? `<span class="drawer-meta-item">⏱ ${escHtml(dur)}</span>` : '',
       `<span class="drawer-meta-item">🔄 ${reworkCount} rework</span>`,
     ].filter(Boolean).join('');
