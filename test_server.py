@@ -575,3 +575,57 @@ def test_events_graph_default_window(isolated_client):
     assert resp.status_code == 200
     data = resp.json()
     assert data["window_hours"] == 24
+
+
+# ── ?loop_id filtering on /api/feed and /api/history ──
+
+def test_feed_loop_id_filter(isolated_client):
+    import sqlite3
+    now = "2026-01-01T00:00:00+00:00"
+    conn = sqlite3.connect(server.DB_PATH)
+    conn.executemany(
+        "INSERT INTO events (project, role, event_type, created_at, loop_id) VALUES (?, ?, ?, ?, ?)",
+        [
+            ("p", "dev", "ev_x", now, "loop-x"),
+            ("p", "dev", "ev_y", now, "loop-y"),
+            ("p", "dev", "ev_none", now, None),
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+    resp = isolated_client.get("/api/feed?loop_id=loop-x")
+    assert resp.status_code == 200
+    data = resp.json()
+    proj_events = [r["event_type"] for r in data if r["project"] == "p"]
+    assert proj_events == ["ev_x"]
+
+    resp_all = isolated_client.get("/api/feed")
+    assert resp_all.status_code == 200
+    all_types = {r["event_type"] for r in resp_all.json() if r["project"] == "p"}
+    assert {"ev_x", "ev_y", "ev_none"}.issubset(all_types)
+
+
+def test_history_loop_id_filter(isolated_client):
+    import sqlite3
+    now = "2026-01-01T00:00:00+00:00"
+    conn = sqlite3.connect(server.DB_PATH)
+    conn.executemany(
+        "INSERT INTO events (project, role, event_type, created_at, loop_id) VALUES (?, ?, ?, ?, ?)",
+        [
+            ("ph", "dev", "build_done", now, "loop-alpha"),
+            ("ph", "dev", "build_done", now, "loop-beta"),
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+    resp = isolated_client.get("/api/history?loop_id=loop-alpha")
+    assert resp.status_code == 200
+    proj_rows = [r for r in resp.json() if r["project"] == "ph"]
+    assert len(proj_rows) == 1
+
+    resp_all = isolated_client.get("/api/history")
+    assert resp_all.status_code == 200
+    all_proj = [r for r in resp_all.json() if r["project"] == "ph"]
+    assert len(all_proj) == 2

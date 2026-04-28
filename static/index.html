@@ -52,6 +52,36 @@
 
     header h1 span { color: var(--accent); }
 
+    #version-badge {
+      font-size: 0.72rem;
+      color: var(--muted);
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 2px 8px;
+      font-family: monospace;
+    }
+
+    #loop-selector-wrap {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    #loop-selector-wrap.visible { display: flex; }
+
+    #loop-selector {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--text);
+      font-size: 0.75rem;
+      padding: 3px 8px;
+      cursor: pointer;
+    }
+
     #refresh-indicator {
       font-size: 0.75rem;
       color: var(--muted);
@@ -832,9 +862,18 @@
 
 <header>
   <h1>Bounty <span>Monitor</span></h1>
-  <div id="refresh-indicator">
-    <span class="dot"></span>
-    <span id="last-update">—</span>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <span id="version-badge">loop-monitor</span>
+    <div id="loop-selector-wrap">
+      <label for="loop-selector" style="white-space:nowrap">Loop:</label>
+      <select id="loop-selector">
+        <option value="">All loops</option>
+      </select>
+    </div>
+    <div id="refresh-indicator">
+      <span class="dot"></span>
+      <span id="last-update">—</span>
+    </div>
   </div>
 </header>
 
@@ -1282,6 +1321,7 @@
   }
 
   // ── State ──
+  let currentLoopId = '';   // '' = all loops
   let projectScores = {};   // project -> total_points
   let activeWorkers = [];   // from /api/active
   let statusEntries = [];   // from /api/status
@@ -1519,14 +1559,15 @@
   // ── Fetch all data ──
   async function fetchAll() {
     try {
+      const loopParam = currentLoopId ? `?loop_id=${encodeURIComponent(currentLoopId)}` : '';
       const [boardRes, feedRes, statusRes, verdictsRes, activeRes, historyRes,
              activityRes, stagesRes, reworkRes, projectsRes, eventsGraphRes] = await Promise.all([
         fetch('/api/board'),
-        fetch('/api/feed'),
+        fetch(`/api/feed${loopParam}`),
         fetch('/api/status'),
         fetch('/api/verdicts'),
         fetch('/api/active'),
-        fetch('/api/history'),
+        fetch(`/api/history${loopParam}`),
         fetch('/api/stats/activity'),
         fetch('/api/stats/stages'),
         fetch('/api/stats/rework'),
@@ -2004,8 +2045,42 @@
     claudeUsageTimer = setTimeout(fetchClaudeUsage, refreshSeconds * 1000);
   }
 
+  // ── Loop selector and version badge (one-time on load) ──
+  const loopSelectorWrap = document.getElementById('loop-selector-wrap');
+  const loopSelector = document.getElementById('loop-selector');
+
+  async function initVersionBadge() {
+    try {
+      const resp = await fetch('/api/health');
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const ver = data.monitor_version || 'unknown';
+      document.getElementById('version-badge').textContent = `loop-monitor v${ver}`;
+    } catch (_) {}
+  }
+
+  async function initLoopSelector() {
+    try {
+      const resp = await fetch('/api/loops');
+      if (!resp.ok) return;
+      const loops = await resp.json();
+      const realLoops = loops.filter(l => l.loop_id !== '(unknown)');
+      if (realLoops.length <= 1) return;
+      loopSelector.innerHTML = '<option value="">All loops</option>' +
+        realLoops.map(l => `<option value="${escHtml(l.loop_id)}">${escHtml(l.loop_id)}</option>`).join('');
+      loopSelectorWrap.classList.add('visible');
+    } catch (_) {}
+  }
+
+  loopSelector.addEventListener('change', () => {
+    currentLoopId = loopSelector.value;
+    fetchAll();
+  });
+
   // ── Init ──
   initCharts();
+  initVersionBadge();
+  initLoopSelector();
   fetchAll();
   setInterval(fetchAll, 5000);
   fetchClaudeUsage();
