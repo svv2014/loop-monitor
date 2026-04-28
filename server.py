@@ -14,16 +14,10 @@ logger = logging.getLogger(__name__)
 
 DB_PATH = "bounty.db"
 
-
-def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def init_db():
-    conn = get_db()
-    conn.executescript("""
+MIGRATIONS = [
+    (
+        "0001_initial",
+        """
         CREATE TABLE IF NOT EXISTS events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             project TEXT NOT NULL,
@@ -34,9 +28,9 @@ def init_db():
             pr_number INTEGER,
             detail TEXT,
             payload TEXT,
+            core_version TEXT,
             created_at TEXT NOT NULL
         );
-
         CREATE TABLE IF NOT EXISTS verdicts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             project TEXT NOT NULL,
@@ -46,7 +40,6 @@ def init_db():
             reason TEXT,
             created_at TEXT NOT NULL
         );
-
         CREATE TABLE IF NOT EXISTS scores (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             project TEXT NOT NULL,
@@ -56,7 +49,6 @@ def init_db():
             verdict_count INTEGER NOT NULL DEFAULT 0,
             updated_at TEXT NOT NULL
         );
-
         CREATE TABLE IF NOT EXISTS issue_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             project TEXT NOT NULL,
@@ -70,7 +62,6 @@ def init_db():
             rework_count INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
-
         CREATE TABLE IF NOT EXISTS pipeline_runs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             project TEXT NOT NULL,
@@ -85,43 +76,86 @@ def init_db():
             total_bounty INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
-    """)
-    # Migrate existing events table if new columns are missing
-    cols = {row[1] for row in conn.execute("PRAGMA table_info(events)")}
-    for col, defn in [
-        ("issue_number", "INTEGER"),
-        ("pr_number", "INTEGER"),
-        ("detail", "TEXT"),
-        ("core_version", "TEXT"),
-        ("loop_id", "TEXT"),
-    ]:
-        if col not in cols:
-            conn.execute(f"ALTER TABLE events ADD COLUMN {col} {defn}")
-
-    # Migrate pipeline_runs table if new columns are missing
-    pr_cols = {row[1] for row in conn.execute("PRAGMA table_info(pipeline_runs)")}
-    for col, defn in [
-        ("issue_lifetime_seconds", "INTEGER"),
-        ("pr_lifetime_seconds", "INTEGER"),
-    ]:
-        if col not in pr_cols:
-            conn.execute(f"ALTER TABLE pipeline_runs ADD COLUMN {col} {defn}")
-
-    conn.executescript("""
         CREATE INDEX IF NOT EXISTS idx_events_project_role ON events (project, role);
         CREATE INDEX IF NOT EXISTS idx_events_event_type ON events (event_type);
         CREATE INDEX IF NOT EXISTS idx_events_created_at ON events (created_at);
         CREATE INDEX IF NOT EXISTS idx_events_issue_number ON events (project, issue_number) WHERE issue_number IS NOT NULL;
         CREATE INDEX IF NOT EXISTS idx_events_pr_number ON events (project, pr_number) WHERE pr_number IS NOT NULL;
-    """)
+        """,
+    ),
+    (
+        "0002_add_loop_id",
+        "ALTER TABLE events ADD COLUMN loop_id TEXT",
+    ),
+    (
+        "0003_add_pipeline_run_cols",
+        "ALTER TABLE pipeline_runs ADD COLUMN issue_lifetime_seconds INTEGER; "
+        "ALTER TABLE pipeline_runs ADD COLUMN pr_lifetime_seconds INTEGER",
+    ),
+]
 
+
+def _migration_already_applied(conn: sqlite3.Connection, version_id: str) -> bool:
+    """Return True if the schema change for version_id is already present in the DB."""
+    if version_id == "0001_initial":
+        return bool(conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='events'"
+        ).fetchone())
+    if version_id == "0002_add_loop_id":
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(events)")}
+        return "loop_id" in cols
+    if version_id == "0003_add_pipeline_run_cols":
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(pipeline_runs)")}
+        return "issue_lifetime_seconds" in cols
+    return False
+
+
+def apply_pending_migrations():
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version_id TEXT PRIMARY KEY,
+            applied_at TEXT
+        )
+    """)
     conn.commit()
+
+    now = datetime.now(timezone.utc).isoformat()
+    applied = {r[0] for r in conn.execute("SELECT version_id FROM schema_migrations")}
+
+    for version_id, sql in MIGRATIONS:
+        if version_id in applied:
+            continue
+        if _migration_already_applied(conn, version_id):
+            conn.execute(
+                "INSERT INTO schema_migrations (version_id, applied_at) VALUES (?, ?)",
+                (version_id, now),
+            )
+            conn.commit()
+            continue
+        try:
+            conn.executescript(sql)
+            conn.execute(
+                "INSERT INTO schema_migrations (version_id, applied_at) VALUES (?, ?)",
+                (version_id, now),
+            )
+            conn.commit()
+        except Exception:
+            print(f"Migration failed: {version_id}\nSQL:\n{sql}")
+            raise
+
     conn.close()
+
+
+def get_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()
+    apply_pending_migrations()
     yield
 
 
