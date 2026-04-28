@@ -867,4 +867,47 @@ def get_projects():
     return [{"project": p, "repo": r} for p, r in PROJECTS.items() if p in active]
 
 
+def _percentile_stats(values: list) -> dict:
+    """Return median, P90, sample_size, most_recent for a sorted list of values."""
+    n = len(values)
+    if n == 0:
+        return None
+    sorted_vals = sorted(values)
+    median = sorted_vals[int(0.5 * n)]
+    p90 = sorted_vals[int(0.9 * n)]
+    return {
+        "median_seconds": median,
+        "p90_seconds": p90,
+        "sample_size": n,
+        "most_recent_seconds": values[-1],
+    }
+
+
+@app.get("/api/projects/{slug}/cycle_times")
+def get_cycle_times(slug: str):
+    null_response = {"total_duration": None, "issue_lifetime": None, "pr_lifetime": None}
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT total_duration_seconds, issue_lifetime_seconds, pr_lifetime_seconds
+           FROM pipeline_runs
+           WHERE project=? AND total_duration_seconds IS NOT NULL
+           ORDER BY id ASC""",
+        (slug,),
+    ).fetchall()
+    conn.close()
+
+    if not rows:
+        return null_response
+
+    total_vals = [r["total_duration_seconds"] for r in rows]
+    issue_vals = [r["issue_lifetime_seconds"] for r in rows if r["issue_lifetime_seconds"] is not None]
+    pr_vals = [r["pr_lifetime_seconds"] for r in rows if r["pr_lifetime_seconds"] is not None]
+
+    return {
+        "total_duration": _percentile_stats(total_vals),
+        "issue_lifetime": _percentile_stats(issue_vals) if issue_vals else None,
+        "pr_lifetime": _percentile_stats(pr_vals) if pr_vals else None,
+    }
+
+
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
