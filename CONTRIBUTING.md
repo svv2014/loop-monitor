@@ -31,9 +31,43 @@ pytest tests/
 
 ## Versioning
 
-loop-monitor independently versioned. The bounty event API contract is
-shared with Loop core; bumping it requires coordination across both
-repos.
+loop-monitor is independently versioned from Loop core using
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Use `scripts/release.sh patch|minor|major` to cut a release — it bumps
+`VERSION`, commits, tags, pushes, and creates a GitHub Release with the
+CHANGELOG excerpt automatically.
+
+### Pre-1.0 policy (current)
+
+While the major version is **0**, a MINOR bump (`0.X.0`) may introduce
+breaking changes to loop-monitor's own HTTP API or database schema.
+Every such change **must**:
+
+1. Include the word **BREAKING** in the CHANGELOG entry for that version.
+2. Include a migration recipe explaining how existing deployments should
+   update (SQL `ALTER TABLE` statements, config key renames, etc.).
+
+Patch bumps (`0.X.Y`) must remain backwards-compatible.
+
+### Post-1.0 policy
+
+Once `1.0.0` ships, strict semver applies:
+
+- **MAJOR** — any backwards-incompatible change to a public interface.
+- **MINOR** — new backwards-compatible functionality.
+- **PATCH** — backwards-compatible bug fixes only.
+
+### Bounty event API contract
+
+The bounty event API (`/api/report`, `/api/verdict`) is a **shared
+contract** between loop-monitor and Loop core. Its version (`api: "1.x"`)
+is baked into every payload.
+
+- Changing the API contract requires a coordinated bump in **both** repos.
+- Additive-only changes (new optional fields) may be shipped as a MINOR
+  bump without breaking Loop core clients.
+- Any removal or rename of an existing field is a **major API version**
+  bump and requires updating the spec in Loop core first.
 
 ## Reporting issues
 
