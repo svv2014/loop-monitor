@@ -1,3 +1,4 @@
+import logging
 import sqlite3
 import json
 from datetime import datetime, timezone
@@ -8,6 +9,8 @@ from pathlib import Path
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, model_validator
+
+logger = logging.getLogger(__name__)
 
 DB_PATH = "bounty.db"
 
@@ -89,6 +92,7 @@ def init_db():
         ("issue_number", "INTEGER"),
         ("pr_number", "INTEGER"),
         ("detail", "TEXT"),
+        ("core_version", "TEXT"),
     ]:
         if col not in cols:
             conn.execute(f"ALTER TABLE events ADD COLUMN {col} {defn}")
@@ -221,8 +225,8 @@ def _insert_event(data: ReportPayload):
     now = datetime.now(timezone.utc).isoformat()
     conn.execute(
         """INSERT INTO events
-           (project, role, model, event_type, issue_number, pr_number, detail, payload, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           (project, role, model, event_type, issue_number, pr_number, detail, payload, core_version, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             data.project,
             data.role,
@@ -232,6 +236,7 @@ def _insert_event(data: ReportPayload):
             data.pr_number,
             data.detail,
             json.dumps(data.payload) if data.payload else None,
+            data.core_version,
             now,
         ),
     )
@@ -325,15 +330,24 @@ MONITOR_VERSION = (Path(__file__).parent / "VERSION").read_text().strip() if (Pa
 
 @app.get("/api/health")
 def health():
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT core_version, COUNT(*) as cnt FROM events WHERE core_version IS NOT NULL GROUP BY core_version"
+    ).fetchall()
+    conn.close()
+    core_version_counts = {r["core_version"]: r["cnt"] for r in rows}
     return {
         "status": "ok",
         "monitor_version": MONITOR_VERSION,
         "supported_bounty_api": f"{SUPPORTED_API_MAJOR}.x",
+        "core_version_counts": core_version_counts,
     }
 
 
 @app.post("/api/report", status_code=202)
 async def report(data: ReportPayload, background_tasks: BackgroundTasks):
+    if not data.api:
+        logger.warning("Received bounty event with no 'api' field — treating as v1.0 legacy")
     # Bounty event API version negotiation: accept 1.x, reject other majors with 426.
     if data.api:
         major = data.api.split(".", 1)[0]

@@ -214,3 +214,61 @@ def test_pipeline_run_not_duplicated(isolated_client):
     data = response.json()
     assert len(data) == 1
     assert data[0]["pr_number"] == 99
+
+
+# ── Version negotiation tests ──
+
+def test_version_v1_0_accepted(isolated_client):
+    resp = isolated_client.post("/api/report", json={
+        "api": "1.0", "project": "p", "role": "dev", "event_type": "dev_done",
+        "core_version": "0.1.0",
+    })
+    assert resp.status_code == 202
+
+
+def test_version_v1_5_accepted_unknown_fields_ignored(isolated_client):
+    resp = isolated_client.post("/api/report", json={
+        "api": "1.5", "project": "p", "role": "dev", "event_type": "dev_done",
+        "future_field": "ignored",
+    })
+    assert resp.status_code == 202
+
+
+def test_version_v2_rejected_426(isolated_client):
+    resp = isolated_client.post("/api/report", json={
+        "api": "2.0", "project": "p", "role": "dev", "event_type": "dev_done",
+    })
+    assert resp.status_code == 426
+    body = resp.json()
+    assert body["detail"]["error"] == "version_unsupported"
+    assert body["detail"]["supported"] == [f"{server.SUPPORTED_API_MAJOR}.x"]
+
+
+def test_missing_api_accepted_with_warning(isolated_client, caplog):
+    import logging
+    with caplog.at_level(logging.WARNING, logger="server"):
+        resp = isolated_client.post("/api/report", json={
+            "project": "p", "role": "dev", "event_type": "dev_done",
+        })
+    assert resp.status_code == 202
+    assert any("no 'api' field" in r.message for r in caplog.records)
+
+
+def test_health_core_version_counts(isolated_client):
+    isolated_client.post("/api/report", json={
+        "api": "1.0", "project": "p", "role": "dev", "event_type": "dev_done",
+        "core_version": "0.1.0",
+    })
+    isolated_client.post("/api/report", json={
+        "api": "1.0", "project": "p", "role": "dev", "event_type": "dev_done",
+        "core_version": "0.1.0",
+    })
+    isolated_client.post("/api/report", json={
+        "api": "1.0", "project": "p", "role": "dev", "event_type": "dev_done",
+        "core_version": "0.2.0",
+    })
+    resp = isolated_client.get("/api/health")
+    assert resp.status_code == 200
+    counts = resp.json()["core_version_counts"]
+    assert counts["0.1.0"] == 2
+    assert counts["0.2.0"] == 1
