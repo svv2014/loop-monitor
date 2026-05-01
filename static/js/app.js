@@ -8,6 +8,7 @@ import { initVersionBadge, initLoopSelector } from '/js/components/header.js';
 import { renderActive, renderAgents } from '/js/components/stats.js';
 import { initRunsPanel, checkHash } from '/js/components/runs.js';
 import { fetchClaudeUsage } from '/js/components/claude_usage.js';
+import { fetchActionQueue, initActionQueue, renderActionQueue } from '/js/components/action_queue.js';
 
 async function fetchAll() {
   try {
@@ -33,6 +34,9 @@ async function fetchAll() {
     renderVerdicts(verdicts);
     updateCharts(activity, board, stages, rework);
 
+    const actionItems = await fetchActionQueue();
+    renderActionQueue(actionItems);
+
     document.getElementById('last-update').textContent = 'Updated ' + timeAgo(new Date().toISOString());
   } catch (e) {
     console.error('Fetch error:', e);
@@ -45,6 +49,7 @@ initRunsPanel();
 initGraphTooltip();
 initVersionBadge();
 initLoopSelector(fetchAll);
+initActionQueue();
 
 document.getElementById('feed-role-filter').addEventListener('change', fetchAll);
 document.getElementById('feed-status-filter').addEventListener('change', fetchAll);
