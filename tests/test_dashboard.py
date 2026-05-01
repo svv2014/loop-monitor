@@ -1,9 +1,4 @@
-import os
-import sys
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
-from scripts.dashboard import format_active, format_board, format_feed, _since
+from scripts.dashboard import _since, format_active, format_board, format_feed
 
 
 def test_format_active_empty():
