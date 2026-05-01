@@ -419,6 +419,7 @@ def test_timeline_cumulative_seconds(isolated_client):
     # Insert start then done events with a known gap via _insert_event
     # Use direct DB insertion with controlled timestamps for determinism
     import sqlite3
+
     import server.db as _srv_db
     conn = sqlite3.connect(_srv_db.DB_PATH)
     conn.row_factory = sqlite3.Row
