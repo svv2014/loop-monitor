@@ -10,6 +10,9 @@ const mainEl        = document.querySelector('main');
 const chartsEl      = document.getElementById('charts-section');
 const eventsGraphEl = document.getElementById('events-graph-section');
 
+let currentProject = null;
+let prMonitorInterval = null;
+
 export function showProjectPanel(project) {
   document.getElementById('project-panel-title').textContent = project + ' — Run History';
   document.getElementById('runs-table-body').innerHTML =
@@ -22,6 +25,7 @@ export function showProjectPanel(project) {
 
   history.pushState(null, '', '#project/' + encodeURIComponent(project));
 
+  currentProject = project;
   fetch('/api/runs/' + encodeURIComponent(project))
     .then(r => r.ok ? r.json() : Promise.reject(r.status))
     .then(rows => renderRunsTable(project, rows))
@@ -29,6 +33,12 @@ export function showProjectPanel(project) {
       document.getElementById('runs-table-body').innerHTML =
         '<tr><td colspan="6" style="color:var(--red);text-align:center;padding:16px">Failed to load runs</td></tr>';
     });
+
+  loadPrMonitor(project);
+  if (prMonitorInterval) clearInterval(prMonitorInterval);
+  prMonitorInterval = setInterval(() => {
+    if (currentProject) loadPrMonitor(currentProject);
+  }, 60000);
 }
 
 export function showHome() {
@@ -36,6 +46,90 @@ export function showHome() {
   mainEl.style.display        = '';
   chartsEl.style.display      = '';
   eventsGraphEl.style.display = eventsGraphVisible ? '' : 'none';
+  currentProject = null;
+  if (prMonitorInterval) {
+    clearInterval(prMonitorInterval);
+    prMonitorInterval = null;
+  }
+}
+
+let prMonitorRows = [];
+
+function loadPrMonitor(project) {
+  const includeFinished = document.getElementById('pr-include-finished')?.checked ? 'true' : 'false';
+  fetch(`/api/projects/${encodeURIComponent(project)}/prs?include_finished=${includeFinished}`)
+    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .then(rows => {
+      prMonitorRows = rows;
+      populateStageFilter(rows);
+      renderPrMonitor();
+    })
+    .catch(() => {
+      const tbody = document.getElementById('pr-monitor-body');
+      if (tbody) tbody.innerHTML =
+        '<tr><td colspan="7" style="color:var(--red);text-align:center;padding:16px">Failed to load PRs</td></tr>';
+    });
+}
+
+function populateStageFilter(rows) {
+  const sel = document.getElementById('pr-stage-filter');
+  if (!sel) return;
+  const current = sel.value;
+  const stages = Array.from(new Set(rows.map(r => r.stage).filter(Boolean))).sort();
+  const opts = ['<option value="">All stages</option>']
+    .concat(stages.map(s => `<option value="${escHtml(s)}">${escHtml(s)}</option>`));
+  sel.innerHTML = opts.join('');
+  if (stages.includes(current)) sel.value = current;
+}
+
+function timeBadgeClass(secs) {
+  if (secs == null) return '';
+  if (secs > 86400) return 'pr-time-red';
+  if (secs > 21600) return 'pr-time-yellow';
+  return 'pr-time-fresh';
+}
+
+function renderPrMonitor() {
+  const tbody = document.getElementById('pr-monitor-body');
+  if (!tbody) return;
+  const stageFilter = document.getElementById('pr-stage-filter')?.value || '';
+  const sortMode    = document.getElementById('pr-sort')?.value || 'age';
+
+  let rows = prMonitorRows.slice();
+  if (stageFilter) rows = rows.filter(r => r.stage === stageFilter);
+
+  rows.sort((a, b) => {
+    if (sortMode === 'stage') return (a.stage || '').localeCompare(b.stage || '');
+    const av = a.time_in_stage_seconds ?? -1;
+    const bv = b.time_in_stage_seconds ?? -1;
+    return sortMode === 'age-desc' ? av - bv : bv - av;
+  });
+
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No PRs tracked yet</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(r => {
+    const cls   = timeBadgeClass(r.time_in_stage_seconds);
+    const time  = r.time_in_stage_seconds != null ? fmtDur(r.time_in_stage_seconds) : '—';
+    const stage = r.stage || '—';
+    const draft = r.is_draft ? ' <span class="pr-draft-badge">draft</span>' : '';
+    const branch = r.branch ? `<div style="color:var(--muted);font-size:0.7rem">${escHtml(r.branch)}</div>` : '';
+    const finishedBadge = r.is_finished ? ' <span class="pr-finished-badge">done</span>' : '';
+    const link  = r.github_url
+      ? `<a href="${escHtml(r.github_url)}" target="_blank" rel="noopener" style="color:var(--muted);font-size:0.75rem">↗</a>`
+      : '';
+    return `<tr>
+      <td>#${r.pr_number}${draft}${finishedBadge}</td>
+      <td>${escHtml(r.title || '')}${branch}</td>
+      <td><span class="stage-badge stage-${escHtml((stage).replace(/[^a-z0-9-]/gi,''))}">${escHtml(stage)}</span></td>
+      <td class="${cls}">${escHtml(time)}</td>
+      <td style="text-align:center">${r.retry_count || 0}</td>
+      <td style="color:var(--muted);font-size:0.75rem">${escHtml(r.last_event || '—')}</td>
+      <td>${link}</td>
+    </tr>`;
+  }).join('');
 }
 
 export function openDrawer(project, issue, pr) {
@@ -280,6 +374,15 @@ export function checkHash() {
 }
 
 export function initRunsPanel() {
+  const stageFilter = document.getElementById('pr-stage-filter');
+  const sortSel     = document.getElementById('pr-sort');
+  const incFinished = document.getElementById('pr-include-finished');
+  if (stageFilter) stageFilter.addEventListener('change', renderPrMonitor);
+  if (sortSel)     sortSel.addEventListener('change', renderPrMonitor);
+  if (incFinished) incFinished.addEventListener('change', () => {
+    if (currentProject) loadPrMonitor(currentProject);
+  });
+
   document.getElementById('project-panel-back').addEventListener('click', () => {
     history.pushState(null, '', window.location.pathname + window.location.search);
     showHome();

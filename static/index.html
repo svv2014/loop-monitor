@@ -205,6 +205,38 @@
       </tbody>
     </table>
   </div>
+
+  <div class="pr-monitor-wrap" style="margin-top:24px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
+      <span class="section-title" style="margin-bottom:0;font-size:0.85rem">PR Monitor</span>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <select id="pr-stage-filter" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:0.7rem;padding:2px 6px;border-radius:4px;cursor:pointer;">
+          <option value="">All stages</option>
+        </select>
+        <select id="pr-sort" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:0.7rem;padding:2px 6px;border-radius:4px;cursor:pointer;">
+          <option value="age">Sort: oldest first</option>
+          <option value="age-desc">Sort: newest first</option>
+          <option value="stage">Sort: stage</option>
+        </select>
+        <label style="font-size:0.7rem;color:var(--muted);display:flex;gap:4px;align-items:center;cursor:pointer">
+          <input type="checkbox" id="pr-include-finished" /> Include finished
+        </label>
+      </div>
+    </div>
+    <div class="runs-table-wrap">
+      <table class="runs-table">
+        <thead>
+          <tr>
+            <th>PR</th><th>Title</th><th>Stage</th><th>Time in stage</th>
+            <th>Retries</th><th>Last event</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="pr-monitor-body">
+          <tr><td colspan="7" class="empty-state">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
 </section>
 
 <div id="graph-tooltip"></div>
