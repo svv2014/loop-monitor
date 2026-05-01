@@ -11,6 +11,12 @@
 
 <header>
   <h1>Bounty <span>Monitor</span></h1>
+  <nav id="dashboard-tabs" style="display:flex;gap:6px;align-items:center;">
+    <button class="tab-btn active" data-dash-tab="overview">Overview</button>
+    <button class="tab-btn" data-dash-tab="action-queue">
+      Action Queue <span id="action-queue-badge" class="badge" style="display:none;margin-left:4px;background:#c44;color:#fff;border-radius:10px;padding:1px 7px;font-size:0.7rem;">0</span>
+    </button>
+  </nav>
   <div style="display:flex;align-items:center;gap:12px;">
     <span id="version-badge">loop-monitor</span>
     <div id="loop-selector-wrap">
@@ -25,6 +31,43 @@
     </div>
   </div>
 </header>
+
+<section id="action-queue-section" style="display:none;">
+  <div class="section-title">Action Queue</div>
+  <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+    <select id="aq-filter-project" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:0.75rem;padding:3px 6px;border-radius:4px;">
+      <option value="">All projects</option>
+    </select>
+    <select id="aq-filter-reason" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:0.75rem;padding:3px 6px;border-radius:4px;">
+      <option value="">All reasons</option>
+      <option value="stuck_label">stuck_label</option>
+      <option value="timeout">timeout</option>
+      <option value="qa_fail_repeated">qa_fail_repeated</option>
+    </select>
+    <select id="aq-filter-loop" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:0.75rem;padding:3px 6px;border-radius:4px;">
+      <option value="">All loops</option>
+    </select>
+  </div>
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:4px 0;">
+    <table class="active-table" id="action-queue-table">
+      <thead>
+        <tr>
+          <th data-aq-sort="project">Project</th>
+          <th data-aq-sort="kind">Kind</th>
+          <th data-aq-sort="number">Number</th>
+          <th data-aq-sort="title">Title</th>
+          <th data-aq-sort="age_seconds">Age</th>
+          <th data-aq-sort="reason">Reason</th>
+          <th data-aq-sort="loop_id">Loop</th>
+          <th>Link</th>
+        </tr>
+      </thead>
+      <tbody id="action-queue-body">
+        <tr><td colspan="8" class="no-workers">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
 
 <section id="events-graph-section" style="display:none">
   <div id="events-graph-card">
