@@ -1,11 +1,12 @@
 import sqlite3
 
 import server
+import server.db
 
 
 def test_fresh_db_applies_all_migrations(tmp_path, monkeypatch):
     db_path = str(tmp_path / "fresh.db")
-    monkeypatch.setattr(server, "DB_PATH", db_path)
+    monkeypatch.setattr(server.db, "DB_PATH", db_path)
     server.apply_pending_migrations()
     conn = sqlite3.connect(db_path)
     rows = conn.execute("SELECT version_id FROM schema_migrations ORDER BY version_id").fetchall()
@@ -24,7 +25,7 @@ def test_fresh_db_applies_all_migrations(tmp_path, monkeypatch):
 
 def test_apply_pending_migrations_idempotent(tmp_path, monkeypatch):
     db_path = str(tmp_path / "idempotent.db")
-    monkeypatch.setattr(server, "DB_PATH", db_path)
+    monkeypatch.setattr(server.db, "DB_PATH", db_path)
     server.apply_pending_migrations()
     server.apply_pending_migrations()
     conn = sqlite3.connect(db_path)
