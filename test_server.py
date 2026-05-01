@@ -8,8 +8,9 @@ _db_fd, _db_path = tempfile.mkstemp(suffix=".db")
 os.close(_db_fd)
 
 import server  # noqa: E402
+import server.db  # noqa: E402
 
-server.DB_PATH = _db_path
+server.db.DB_PATH = _db_path
 server.apply_pending_migrations()
 
 from fastapi.testclient import TestClient  # noqa: E402,I001
@@ -90,7 +91,7 @@ def test_board_cumulative_scores():
 
 @pytest.fixture()
 def isolated_client(tmp_path, monkeypatch):
-    monkeypatch.setattr(server, "DB_PATH", str(tmp_path / "test.db"))
+    monkeypatch.setattr(server.db, "DB_PATH", str(tmp_path / "test.db"))
     with TestClient(server.app) as c:
         yield c
 
@@ -300,7 +301,7 @@ def test_loop_id_persisted(isolated_client):
         "loop_id": "my-loop",
     })
     time.sleep(0.05)  # background task
-    conn = sqlite3.connect(server.DB_PATH)
+    conn = sqlite3.connect(server.db.DB_PATH)
     row = conn.execute(
         "SELECT loop_id FROM events WHERE project='proj-li' AND loop_id='my-loop'"
     ).fetchone()
@@ -316,7 +317,7 @@ def test_loop_id_null_when_absent(isolated_client):
         "project": "proj-li2", "role": "dev", "event_type": "dev_start",
     })
     time.sleep(0.05)  # background task
-    conn = sqlite3.connect(server.DB_PATH)
+    conn = sqlite3.connect(server.db.DB_PATH)
     row = conn.execute(
         "SELECT loop_id FROM events WHERE project='proj-li2'"
     ).fetchone()
@@ -419,8 +420,8 @@ def test_timeline_cumulative_seconds(isolated_client):
     # Use direct DB insertion with controlled timestamps for determinism
     import sqlite3
 
-    import server as _srv
-    conn = sqlite3.connect(_srv.DB_PATH)
+    import server.db as _srv_db
+    conn = sqlite3.connect(_srv_db.DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute(
         "INSERT INTO events (project, role, event_type, issue_number, created_at) VALUES (?,?,?,?,?)",
@@ -488,7 +489,7 @@ def test_cycle_times_empty(isolated_client):
 def test_cycle_times_with_data(isolated_client):
     """Median and P90 are computed correctly from pipeline_runs rows."""
     import sqlite3
-    conn = sqlite3.connect(server.DB_PATH)
+    conn = sqlite3.connect(server.db.DB_PATH)
     # Insert 10 rows with total_duration_seconds = 10, 20, ..., 100 (ordered by id)
     for i in range(1, 11):
         conn.execute(
@@ -530,7 +531,7 @@ def test_events_graph_empty_db(isolated_client):
 
 def test_events_graph_with_data(isolated_client):
     import sqlite3
-    conn = sqlite3.connect(server.DB_PATH)
+    conn = sqlite3.connect(server.db.DB_PATH)
     conn.execute(
         "INSERT INTO events (project, role, event_type, created_at) VALUES (?,?,?,?)",
         ("proj-g", "po", "po_done", "2026-04-28T10:00:00"),
@@ -586,7 +587,7 @@ def test_events_graph_default_window(isolated_client):
 def test_feed_loop_id_filter(isolated_client):
     import sqlite3
     now = "2026-01-01T00:00:00+00:00"
-    conn = sqlite3.connect(server.DB_PATH)
+    conn = sqlite3.connect(server.db.DB_PATH)
     conn.executemany(
         "INSERT INTO events (project, role, event_type, created_at, loop_id) VALUES (?, ?, ?, ?, ?)",
         [
@@ -613,7 +614,7 @@ def test_feed_loop_id_filter(isolated_client):
 def test_history_loop_id_filter(isolated_client):
     import sqlite3
     now = "2026-01-01T00:00:00+00:00"
-    conn = sqlite3.connect(server.DB_PATH)
+    conn = sqlite3.connect(server.db.DB_PATH)
     conn.executemany(
         "INSERT INTO events (project, role, event_type, created_at, loop_id) VALUES (?, ?, ?, ?, ?)",
         [
@@ -640,7 +641,7 @@ def test_history_loop_id_filter(isolated_client):
 def test_fresh_db_applies_all_migrations(tmp_path, monkeypatch):
     import sqlite3
     db_path = str(tmp_path / "fresh.db")
-    monkeypatch.setattr(server, "DB_PATH", db_path)
+    monkeypatch.setattr(server.db, "DB_PATH", db_path)
     server.apply_pending_migrations()
     conn = sqlite3.connect(db_path)
     rows = conn.execute("SELECT version_id FROM schema_migrations ORDER BY version_id").fetchall()
@@ -661,7 +662,7 @@ def test_fresh_db_applies_all_migrations(tmp_path, monkeypatch):
 def test_apply_pending_migrations_idempotent(tmp_path, monkeypatch):
     import sqlite3
     db_path = str(tmp_path / "idempotent.db")
-    monkeypatch.setattr(server, "DB_PATH", db_path)
+    monkeypatch.setattr(server.db, "DB_PATH", db_path)
     server.apply_pending_migrations()
     server.apply_pending_migrations()
     conn = sqlite3.connect(db_path)
@@ -823,7 +824,7 @@ def test_action_queue_timeout_threshold(isolated_client, monkeypatch):
         project="loop", role="dev", event_type="in-progress", issue_number=11
     ))
     # backdate created_at to 300s ago — exceeds 200s threshold
-    conn = sqlite3.connect(server.DB_PATH)
+    conn = sqlite3.connect(server.db.DB_PATH)
     conn.execute(
         "UPDATE events SET created_at = datetime('now', '-300 seconds') WHERE issue_number = 11"
     )
@@ -856,7 +857,7 @@ def test_action_queue_sorted_by_age_desc(isolated_client, monkeypatch):
     server._insert_event(server.ReportPayload(
         project="loop", role="dev", event_type="blocked", issue_number=201
     ))
-    conn = sqlite3.connect(server.DB_PATH)
+    conn = sqlite3.connect(server.db.DB_PATH)
     conn.execute(
         "UPDATE events SET created_at = datetime('now', '-9000 seconds') WHERE issue_number = 200"
     )

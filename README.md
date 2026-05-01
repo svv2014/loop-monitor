@@ -168,7 +168,7 @@ If you need network exposure, terminate auth at a reverse proxy. See
 
 ```bash
 pip install -r requirements.txt
-uvicorn server:app --host 127.0.0.1 --port 18792 --reload
+uvicorn server.app:app --host 127.0.0.1 --port 18792 --reload
 pytest tests/
 ```
 
