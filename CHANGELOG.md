@@ -25,6 +25,7 @@ its own version (currently `1.0`) baked into every payload.
 - [LM-30] Feed filter controls — role and status filtering (#93)
 - [LM-47] Add Action Queue dashboard tab and API (#94)
 - [LM-53] Add per-project cycle time panel and 7-day sparkline to home dashboard (#61)
+- [LM-83] Split server.py into server/ package (routes, models, db, helpers) (#87)
 ## [0.1.1] - 2026-04-27
 
 Catch-up release. v0.1.0 shipped a stale embedded copy of bounty-monitor
