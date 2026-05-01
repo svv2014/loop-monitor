@@ -40,6 +40,7 @@ def auto_bounty(conn, data: ReportPayload, now: str):
         )
     else:
         conn.execute(
-            "INSERT INTO scores (project, role, model, total_points, verdict_count, updated_at) VALUES (?, ?, ?, ?, 1, ?)",
+            "INSERT INTO scores (project, role, model, total_points, verdict_count, updated_at)"
+            " VALUES (?, ?, ?, ?, 1, ?)",
             (data.project, data.role, data.model, pts, now),
         )

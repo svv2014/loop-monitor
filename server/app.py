@@ -1,9 +1,10 @@
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from server.constants import HANDLER_TIMEOUT, MONITOR_VERSION, PROJECTS, SUPPORTED_API_MAJOR  # noqa: F401
 from server.db import apply_pending_migrations
-from server.constants import MONITOR_VERSION, PROJECTS, HANDLER_TIMEOUT, SUPPORTED_API_MAJOR  # noqa: F401
 
 
 @asynccontextmanager

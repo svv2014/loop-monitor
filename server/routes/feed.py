@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter
+
 from server.db import get_db
 
 router = APIRouter()
@@ -38,7 +39,12 @@ def history(limit: int = 50, loop_id: Optional[str] = None):
         LEFT JOIN verdicts v ON v.project = d.project AND v.role = d.role
             AND v.reason LIKE '%auto: ' || d.event_type || '%'
             AND v.created_at >= d.created_at
-            AND v.id = (SELECT MIN(v2.id) FROM verdicts v2 WHERE v2.project=d.project AND v2.role=d.role AND v2.created_at >= d.created_at AND v2.reason LIKE '%auto: ' || d.event_type || '%')
+            AND v.id = (
+                SELECT MIN(v2.id) FROM verdicts v2
+                WHERE v2.project=d.project AND v2.role=d.role
+                  AND v2.created_at >= d.created_at
+                  AND v2.reason LIKE '%auto: ' || d.event_type || '%'
+            )
         WHERE (d.event_type LIKE '%_done' OR d.event_type LIKE '%_pass' OR d.event_type LIKE '%_failed')
         {loop_clause}
         ORDER BY d.id DESC

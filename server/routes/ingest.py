@@ -4,10 +4,10 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 
-from server.db import get_db
-from server.models import ReportPayload, VerdictPayload
 from server.constants import MONITOR_VERSION, SUPPORTED_API_MAJOR
+from server.db import get_db
 from server.helpers.bounty import auto_bounty
+from server.models import ReportPayload, VerdictPayload
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -18,7 +18,8 @@ def _insert_event(data: ReportPayload):
     now = datetime.now(timezone.utc).isoformat()
     conn.execute(
         """INSERT INTO events
-           (project, role, model, event_type, issue_number, pr_number, detail, payload, core_version, loop_id, created_at)
+           (project, role, model, event_type, issue_number, pr_number, detail, payload,
+            core_version, loop_id, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             data.project,
@@ -95,7 +96,9 @@ def _insert_event(data: ReportPayload):
             except Exception:
                 issue_secs = None
             first_pr = conn.execute(
-                "SELECT created_at FROM issue_history WHERE project=? AND issue_number=? AND pr_number IS NOT NULL ORDER BY id ASC LIMIT 1",
+                "SELECT created_at FROM issue_history"
+                " WHERE project=? AND issue_number=? AND pr_number IS NOT NULL"
+                " ORDER BY id ASC LIMIT 1",
                 (data.project, data.issue_number),
             ).fetchone()
             pr_secs = None
@@ -139,7 +142,8 @@ def _insert_verdict(data: VerdictPayload):
         )
     else:
         conn.execute(
-            "INSERT INTO scores (project, role, model, total_points, verdict_count, updated_at) VALUES (?, ?, ?, ?, 1, ?)",
+            "INSERT INTO scores (project, role, model, total_points, verdict_count, updated_at)"
+            " VALUES (?, ?, ?, ?, 1, ?)",
             (data.project, data.role, data.model, data.points, now),
         )
     conn.commit()

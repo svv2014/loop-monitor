@@ -1,7 +1,8 @@
 from pathlib import Path
 
 SUPPORTED_API_MAJOR = "1"
-MONITOR_VERSION = (Path(__file__).parent.parent / "VERSION").read_text().strip() if (Path(__file__).parent.parent / "VERSION").exists() else "unknown"
+_version_file = Path(__file__).parent.parent / "VERSION"
+MONITOR_VERSION = _version_file.read_text().strip() if _version_file.exists() else "unknown"
 
 PROJECTS = {
     'ppl':               'svv2014/ppl-study',

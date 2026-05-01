@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
-from server.db import get_db
+
 from server.constants import PROJECTS
+from server.db import get_db
 from server.helpers.timeline import build_timeline_events, parse_ts
 
 router = APIRouter()
