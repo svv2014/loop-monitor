@@ -156,6 +156,17 @@ Wire it into your Loop core startup or a cron job:
 LOOP_ROOT=/path/to/loop ./scripts/check-version.sh
 ```
 
+### `scripts/dashboard.py` — terminal dashboard
+
+Stdlib-only TUI that polls `/api/active`, `/api/board`, and `/api/feed` and renders Active Workers, Project Status, and the last 5 feed events. Refreshes in place every `--interval` seconds (default 10); `Ctrl+C` exits cleanly. Use `--once` for a single snapshot suitable for piping or screenshots.
+
+```bash
+python3 scripts/dashboard.py                       # live, refresh every 10s
+python3 scripts/dashboard.py --interval 5          # custom refresh
+python3 scripts/dashboard.py --once                # one snapshot, exit 0
+python3 scripts/dashboard.py --url http://host:18792 --once
+```
+
 ## Security
 
 loop-monitor is **designed to bind to `127.0.0.1`**. The bounty event
