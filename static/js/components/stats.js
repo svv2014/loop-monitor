@@ -2,7 +2,7 @@ import { escHtml, eventEmoji, fmtDur, timeAgo, timelineLink, durFromIso } from '
 import { activeWorkers, statusEntries, projectScores } from '/js/state.js';
 
 function renderSparkline(runs) {
-  const pts = (runs || []).filter(r => r.total_duration_seconds != null).slice(-7);
+  const pts = (runs || []).filter(r => r.total_duration_seconds != null).slice(0, 7).reverse();
   if (pts.length < 2) return '';
   const vals = pts.map(r => r.total_duration_seconds);
   const min = Math.min(...vals), max = Math.max(...vals);
@@ -23,16 +23,19 @@ async function fetchAndRenderCycleTime(proj) {
     const res = await fetch(`/api/projects/${encodeURIComponent(proj)}/cycle_times`);
     if (!res.ok) throw new Error('failed');
     const data = await res.json();
-    if (!data.sample_size) {
+    const total = data.total_duration;
+    if (!total || !total.sample_size) {
       panel.innerHTML = '<span style="color:var(--muted)">—</span>';
       return;
     }
-    const median = fmtDur(data.median_seconds);
-    const p90    = fmtDur(data.p90_seconds);
-    const label  = `median: ${median} · P90: ${p90} · (last ${data.sample_size} runs)`;
-    const spark  = renderSparkline(data.runs || []);
+    const median = fmtDur(total.median_seconds);
+    const p90    = fmtDur(total.p90_seconds);
+    const label  = `median: ${median} · P90: ${p90} · (last ${total.sample_size} runs)`;
+    const runsRes  = await fetch(`/api/runs/${encodeURIComponent(proj)}`);
+    const runsData = runsRes.ok ? await runsRes.json() : [];
+    const spark    = renderSparkline(runsData);
     panel.innerHTML =
-      `<span title="Median time from first event to completion, last ${data.sample_size} runs" style="color:var(--muted)">${escHtml(label)}</span>${spark}`;
+      `<span title="Median time from first event to completion, last ${total.sample_size} runs" style="color:var(--muted)">${escHtml(label)}</span>${spark}`;
   } catch {
     panel.innerHTML = '<span style="color:var(--muted)">—</span>';
   }
