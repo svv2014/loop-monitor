@@ -1,9 +1,31 @@
+import subprocess
+from pathlib import Path
+
 from fastapi import APIRouter
 
 from server.constants import MONITOR_VERSION, SUPPORTED_API_MAJOR
 from server.db import get_db
 
 router = APIRouter()
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _git_sha() -> str:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            cwd=_REPO_ROOT,
+        )
+    except Exception:
+        return "unknown"
+    if result.returncode != 0:
+        return "unknown"
+    sha = result.stdout.strip()
+    return sha or "unknown"
 
 
 @router.get("/api/health")
@@ -21,6 +43,7 @@ def health():
     return {
         "status": "ok",
         "monitor_version": MONITOR_VERSION,
+        "git_sha": _git_sha(),
         "supported_bounty_api": f"{SUPPORTED_API_MAJOR}.x",
         "core_version_counts": core_version_counts,
         "loop_ids": loop_ids,
