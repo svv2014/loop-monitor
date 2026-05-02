@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Loop — System Design</title>
+  <link rel="stylesheet" href="tokens.css" />
+  <style>
+    /* page chrome — sits OUTSIDE the design canvas */
+    .lp-intro {
+      max-width: 920px;
+      margin: 56px auto 24px;
+      padding: 0 32px;
+      font-family: var(--font-sans);
+      color: var(--ink);
+    }
+    .lp-intro .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--ink-4);
+    }
+    .lp-intro h1 {
+      font-weight: 500;
+      font-size: 56px;
+      letter-spacing: -0.035em;
+      margin: 8px 0 12px;
+      line-height: 1.02;
+      text-wrap: balance;
+    }
+    .lp-intro h1 em { font-style: normal; color: var(--accent); }
+    .lp-intro p {
+      font-size: 16px;
+      line-height: 1.55;
+      color: var(--ink-2);
+      max-width: 64ch;
+      margin: 0 0 12px;
+      text-wrap: pretty;
+    }
+    .lp-intro .meta {
+      display: grid;
+      grid-template-columns: 140px 1fr;
+      gap: 4px 24px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--ink-3);
+      margin-top: 28px;
+      padding-top: 20px;
+      border-top: 1px solid var(--rule);
+    }
+    .lp-intro .meta dt { color: var(--ink-4); text-transform: uppercase; letter-spacing: 0.08em; font-size: 10.5px; padding-top: 2px; }
+    .lp-intro .meta dd { margin: 0; }
+    body { background: var(--paper); }
+  </style>
+</head>
+<body>
+  <header class="lp-intro">
+    <div class="eyebrow">Loop · v0.2.0 · system design study · 02 May 2026</div>
+    <h1>Operator UIs for an <em>autonomous dev pipeline</em>.</h1>
+    <p>
+      Loop is a single-machine scanner that drives issues through a label
+      state-machine — <span class="mono">needs-po → needs-dev → needs-review → needs-qa → qa-pass → done</span> —
+      dispatching agents (claude / codex / gemini / aider) into isolated
+      worktrees. Six handlers, one reconciler, many repos. The human is the
+      operator: they label, then watch.
+    </p>
+    <p>
+      Per the README, the project intentionally has no GUI — visibility lives
+      in <span class="mono">loop-monitor</span>. This study explores what an
+      operator-side <em>live view</em> could look like if Loop ever wanted one:
+      minimal, glanceable, label-truthful, and honest about Loop's place as a
+      <em>bridge</em> between trackers and ship. Four artboards, side-by-side.
+      Drag to reorder, click ⤢ to focus.
+    </p>
+
+    <dl class="meta">
+      <dt>direction</dt><dd>Swiss minimal · warm off-white · single signal red · mono + grotesk</dd>
+      <dt>data model</dt><dd>actual <span class="mono">workflows/default.yaml</span> · 6 mock projects · 19 in-flight tickets</dd>
+      <dt>variations</dt><dd>A baseline · B live stream · C topology · D operator console</dd>
+      <dt>tweaks</dt><dd>theme · density · signals on/off (toggle Tweaks in toolbar)</dd>
+    </dl>
+  </header>
+
+  <!-- React + Babel -->
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <!-- shared data + canvas + tweaks -->
+  <script src="data.js"></script>
+  <script type="text/babel" src="design-canvas.jsx"></script>
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+
+  <!-- artboards -->
+  <script type="text/babel" src="artboard-a-baseline.jsx"></script>
+  <script type="text/babel" src="artboard-b-livestream.jsx"></script>
+  <script type="text/babel" src="artboard-c-topology.jsx"></script>
+  <script type="text/babel" src="artboard-d-operator.jsx"></script>
+
+  <div id="canvas-root"></div>
+
+  <script type="text/babel" data-presets="react">
+    const { useEffect } = React;
+
+    const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+      "theme": "light",
+      "density": "comfy",
+      "showSignals": true
+    }/*EDITMODE-END*/;
+
+    function App() {
+      const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+      // apply theme to <html>
+      useEffect(() => {
+        document.documentElement.dataset.theme = tweaks.theme;
+      }, [tweaks.theme]);
+
+      return (
+        <>
+          <DesignCanvas>
+            <DCSection id="loop-overview" title="Loop · operator views"
+              subtitle="Four directions for the live system view. Drag to reorder, click ⤢ to focus.">
+              <DCArtboard id="a" label="A · Baseline · Pipeline kanban" width={1200} height={780}>
+                <ABaseline density={tweaks.density} />
+              </DCArtboard>
+              <DCArtboard id="b" label="B · Live Stream · Event tape + agents" width={1200} height={780}>
+                <BLiveStream />
+              </DCArtboard>
+              <DCArtboard id="c" label="C · Topology · Trackers ⇄ Loop ⇄ Ship" width={1200} height={780}>
+                <CTopology />
+              </DCArtboard>
+              <DCArtboard id="d" label="D · Operator Console · Single-screen radar" width={1200} height={780}>
+                <DOperatorConsole showSignals={tweaks.showSignals} />
+              </DCArtboard>
+            </DCSection>
+          </DesignCanvas>
+
+          <TweaksPanel title="Tweaks">
+            <TweakSection title="Appearance">
+              <TweakRadio
+                label="Theme"
+                value={tweaks.theme}
+                onChange={(v) => setTweak("theme", v)}
+                options={[{value:"light",label:"Light"},{value:"dark",label:"Dark"}]} />
+              <TweakRadio
+                label="Density (artboard A)"
+                value={tweaks.density}
+                onChange={(v) => setTweak("density", v)}
+                options={[{value:"comfy",label:"Comfy"},{value:"dense",label:"Dense"}]} />
+            </TweakSection>
+            <TweakSection title="Console">
+              <TweakToggle
+                label="Show reconciler signals"
+                checked={tweaks.showSignals}
+                onChange={(v) => setTweak("showSignals", v)} />
+            </TweakSection>
+          </TweaksPanel>
+        </>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("canvas-root")).render(<App />);
+  </script>
+</body>
+</html>

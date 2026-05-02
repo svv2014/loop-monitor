@@ -1,0 +1,132 @@
+/* Loop — design tokens (Swiss minimal) */
+:root {
+  /* Type */
+  --font-sans: "Söhne", "Inter", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Berkeley Mono", "JetBrains Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-display: "Söhne Breit", "Inter Tight", "Helvetica Neue", Arial, sans-serif;
+
+  /* Warm off-white / near-black palette */
+  --paper: #f3f1ec;
+  --paper-2: #ebe8e1;
+  --paper-3: #e0ddd4;
+  --rule: #cbc7bc;
+  --rule-2: #b6b1a3;
+  --ink: #15140f;
+  --ink-2: #2c2a23;
+  --ink-3: #514e44;
+  --ink-4: #7d7867;
+
+  /* Status — single hue per state, low chroma */
+  --hue-po:    oklch(72% 0.10 260);   /* cool blue — planning */
+  --hue-dev:   oklch(72% 0.12 80);    /* warm amber — building */
+  --hue-review:oklch(72% 0.10 300);   /* violet — reviewing */
+  --hue-qa:    oklch(72% 0.10 200);   /* teal — testing */
+  --hue-pass:  oklch(70% 0.13 145);   /* green — pass / done */
+  --hue-fail:  oklch(64% 0.18 27);    /* red — fail / blocked */
+  --hue-idle:  oklch(70% 0.01 80);    /* neutral grey */
+
+  --accent: oklch(58% 0.17 27);       /* loop signal red — single accent */
+
+  /* Spacing — 4px grid */
+  --s1: 4px;  --s2: 8px;  --s3: 12px; --s4: 16px;
+  --s5: 24px; --s6: 32px; --s7: 48px; --s8: 64px;
+
+  /* Type scale — Swiss-ish, very tight */
+  --t-mono-xs: 10.5px;
+  --t-mono-sm: 12px;
+  --t-mono-md: 13px;
+  --t-base: 14px;
+  --t-lg: 18px;
+  --t-xl: 24px;
+  --t-2xl: 36px;
+  --t-3xl: 56px;
+  --t-display: 96px;
+}
+
+[data-theme="dark"] {
+  --paper:   #0e0d0a;
+  --paper-2: #161510;
+  --paper-3: #1f1d17;
+  --rule:    #2a2820;
+  --rule-2:  #3b382e;
+  --ink:     #f1eee5;
+  --ink-2:   #d8d4c7;
+  --ink-3:   #9d9889;
+  --ink-4:   #66614f;
+  --accent:  oklch(72% 0.16 27);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-sans);
+  font-size: var(--t-base);
+  color: var(--ink);
+  background: var(--paper);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.mono { font-family: var(--font-mono); font-feature-settings: "ss01","cv01"; }
+.cap  { text-transform: uppercase; letter-spacing: 0.08em; }
+.tab  { font-variant-numeric: tabular-nums; }
+
+/* Generic scrollbar restraint (artboards) */
+.lp-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.lp-scroll::-webkit-scrollbar-thumb { background: var(--rule-2); border-radius: 8px; }
+.lp-scroll::-webkit-scrollbar-track { background: transparent; }
+
+/* Tiny dot + bar primitives reused across artboards */
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.dot-sq { display: inline-block; width: 7px; height: 7px; background: currentColor; }
+.bar { display: inline-block; height: 2px; background: currentColor; vertical-align: middle; }
+
+/* Hairline rule */
+.hr { height: 1px; background: var(--rule); }
+
+/* Artboard frame base */
+.lp-frame {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Status colors */
+.s-po    { color: var(--hue-po); }
+.s-dev   { color: var(--hue-dev); }
+.s-review{ color: var(--hue-review); }
+.s-qa    { color: var(--hue-qa); }
+.s-pass  { color: var(--hue-pass); }
+.s-fail  { color: var(--hue-fail); }
+.s-idle  { color: var(--hue-idle); }
+
+.bg-po    { background: var(--hue-po); }
+.bg-dev   { background: var(--hue-dev); }
+.bg-review{ background: var(--hue-review); }
+.bg-qa    { background: var(--hue-qa); }
+.bg-pass  { background: var(--hue-pass); }
+.bg-fail  { background: var(--hue-fail); }
+
+/* Pulse for live activity */
+@keyframes loop-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+.live { animation: loop-pulse 1.6s ease-in-out infinite; }
+
+/* Marquee scroll for event tapes */
+@keyframes loop-marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.marquee {
+  display: inline-flex;
+  white-space: nowrap;
+  animation: loop-marquee 40s linear infinite;
+}

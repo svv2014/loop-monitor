@@ -56,6 +56,28 @@ Open http://127.0.0.1:18792.
 pytest tests/
 ```
 
+## Frontend (`web/`)
+
+The dashboard UI is being migrated from vanilla JS (`static/`) to a React + TypeScript app under `web/`. Until phase 5 of the migration, both coexist.
+
+**Required reading before opening a frontend PR:**
+
+- [`design/MIGRATION.md`](design/MIGRATION.md) — phased migration plan
+- [`design/DESIGN_STANDARDS.md`](design/DESIGN_STANDARDS.md) — design tokens + component rules (binding)
+- [`design/new-design/README.md`](design/new-design/README.md) — frozen reference prototype
+- [`docs/adr/0001-frontend-stack.md`](docs/adr/0001-frontend-stack.md) — Vite + React + TS
+- [`docs/adr/0002-visual-regression.md`](docs/adr/0002-visual-regression.md) — visual-diff CI gate
+
+**Local dev** (after `web/` lands in phase 1):
+
+```bash
+cd web
+npm ci
+npm run dev   # Vite dev server, proxies /api/* to the backend
+```
+
+PRs touching the UI must pass the visual-diff suite (`pytest tests/visual/`) and include a screenshot in the description.
+
 ## Versioning
 
 loop-monitor is independently versioned from Loop core using
