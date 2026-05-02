@@ -1,7 +1,6 @@
 import os
 import sqlite3
 import sys
-import tempfile
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -59,7 +58,8 @@ def _insert_pipeline_run(conn, project="p", issue_number=1, completed=True, days
 
 def _insert_score(conn, project="p", days_ago=1.0):
     conn.execute(
-        "INSERT INTO scores (project, role, model, total_points, verdict_count, updated_at) VALUES (?, 'builder', NULL, 0, 0, ?)",
+        "INSERT INTO scores (project, role, model, total_points, verdict_count, updated_at)"
+        " VALUES (?, 'builder', NULL, 0, 0, ?)",
         (project, _ts(days_ago)),
     )
     conn.commit()
@@ -67,7 +67,8 @@ def _insert_score(conn, project="p", days_ago=1.0):
 
 def _insert_issue_history(conn, project="p", days_ago=1.0):
     conn.execute(
-        "INSERT INTO issue_history (project, issue_number, role, event_type, created_at) VALUES (?, 1, 'builder', 'started', ?)",
+        "INSERT INTO issue_history (project, issue_number, role, event_type, created_at)"
+        " VALUES (?, 1, 'builder', 'started', ?)",
         (project, _ts(days_ago)),
     )
     conn.commit()
@@ -104,7 +105,8 @@ def test_inflight_events_not_pruned(db_path, monkeypatch):
     conn = _conn(db_path)
     # Old event with issue_number tied to an in-progress pipeline run
     conn.execute(
-        "INSERT INTO events (project, role, event_type, issue_number, created_at) VALUES ('p', 'builder', 'started', 42, ?)",
+        "INSERT INTO events (project, role, event_type, issue_number, created_at)"
+        " VALUES ('p', 'builder', 'started', 42, ?)",
         (_ts(60),),
     )
     conn.commit()
@@ -126,7 +128,8 @@ def test_completed_issue_events_pruned(db_path, monkeypatch):
     conn = _conn(db_path)
     # Old event with issue_number tied to a completed pipeline run
     conn.execute(
-        "INSERT INTO events (project, role, event_type, issue_number, created_at) VALUES ('p', 'builder', 'started', 99, ?)",
+        "INSERT INTO events (project, role, event_type, issue_number, created_at)"
+        " VALUES ('p', 'builder', 'started', 99, ?)",
         (_ts(60),),
     )
     conn.commit()

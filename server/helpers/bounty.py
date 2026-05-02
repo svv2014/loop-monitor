@@ -17,6 +17,8 @@ BOUNTY_POINTS = {
 
 def auto_bounty(conn, data: ReportPayload, now: str):
     """Auto-insert a verdict when a terminal event is received."""
+    if data.event_type is None:
+        return
     pts = BOUNTY_POINTS.get(data.event_type)
     if pts is None:
         return
