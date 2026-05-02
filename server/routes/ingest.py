@@ -1,5 +1,6 @@
 import json
 import logging
+import sqlite3
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
@@ -14,6 +15,16 @@ logger = logging.getLogger(__name__)
 
 
 def _insert_event(data: ReportPayload):
+    try:
+        _do_insert_event(data)
+    except sqlite3.OperationalError as e:
+        logger.error(
+            "Failed to persist event (project=%s role=%s event_type=%s): %s",
+            data.project, data.role, data.event_type, e,
+        )
+
+
+def _do_insert_event(data: ReportPayload):
     conn = get_db()
     now = datetime.now(timezone.utc).isoformat()
     conn.execute(
@@ -120,6 +131,16 @@ def _insert_event(data: ReportPayload):
 
 
 def _insert_verdict(data: VerdictPayload):
+    try:
+        _do_insert_verdict(data)
+    except sqlite3.OperationalError as e:
+        logger.error(
+            "Failed to persist verdict (project=%s role=%s points=%s): %s",
+            data.project, data.role, data.points, e,
+        )
+
+
+def _do_insert_verdict(data: VerdictPayload):
     conn = get_db()
     now = datetime.now(timezone.utc).isoformat()
     conn.execute(

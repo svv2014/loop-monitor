@@ -867,3 +867,32 @@ def test_action_queue_sorted_by_age_desc(isolated_client, monkeypatch):
     data = resp.json()
     nums = [it["number"] for it in data if it["number"] in (200, 201)]
     assert nums == [200, 201]
+
+
+def test_concurrent_reports_both_persisted():
+    """Concurrent POST /api/report writes must both persist (WAL + busy_timeout)."""
+    import threading
+
+    project = "proj-concurrent"
+    results: list[int] = []
+    lock = threading.Lock()
+
+    def fire(role: str):
+        resp = client.post("/api/report", json={
+            "project": project,
+            "role": role,
+            "model": "claude-3",
+            "event_type": "started",
+        })
+        with lock:
+            results.append(resp.status_code)
+
+    t1 = threading.Thread(target=fire, args=("builder",))
+    t2 = threading.Thread(target=fire, args=("reviewer",))
+    t1.start(); t2.start()
+    t1.join(); t2.join()
+
+    assert sorted(results) == [202, 202]
+    feed = client.get("/api/feed").json()
+    roles = {e["role"] for e in feed if e["project"] == project}
+    assert {"builder", "reviewer"}.issubset(roles)
