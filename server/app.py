@@ -23,6 +23,7 @@ from server.routes import (  # noqa: E402
     graph,
     health,
     ingest,
+    logs,
     runs,
     stats,
 )
@@ -36,6 +37,7 @@ app.include_router(stats.router)
 app.include_router(graph.router)
 app.include_router(action_queue.router)
 app.include_router(claude_usage.router)
+app.include_router(logs.router)
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
 

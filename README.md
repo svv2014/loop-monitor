@@ -175,6 +175,29 @@ API has **no authentication**. Don't expose port 18792 to the network.
 If you need network exposure, terminate auth at a reverse proxy. See
 [SECURITY.md](SECURITY.md) for the full trust model.
 
+### Logs panel
+
+The dashboard ships a read-only **Logs** tab that tails handler log files
+from `${LOOP_LOG_DIR:-~/.openclaw/workspace/logs/loop}/loop-<handler>.log`
+(via `GET /api/logs`). It also surfaces an orphaned-FD warning when the
+on-disk file size diverges materially from a running handler's open FD
+(see svv2014/loop#194).
+
+By default the endpoint is **loopback-only**: requests from any host
+other than `127.0.0.1`/`::1` receive `403 {"error":"logs disabled"}`. To
+expose the panel (e.g. behind a Tailscale-fronted proxy), set:
+
+```bash
+LOOPMON_EXPOSE_LOGS=1
+```
+
+**Warning:** handler logs may contain `gh` tokens, agent stdout
+(including code snippets), and other potentially sensitive output.
+loop-monitor performs no secret stripping. If you enable
+`LOOPMON_EXPOSE_LOGS`, you are responsible for any exposure that
+results — terminate auth at a reverse proxy, restrict the network, or
+both.
+
 ## Development
 
 ```bash
