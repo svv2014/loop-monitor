@@ -889,8 +889,10 @@ def test_concurrent_reports_both_persisted():
 
     t1 = threading.Thread(target=fire, args=("builder",))
     t2 = threading.Thread(target=fire, args=("reviewer",))
-    t1.start(); t2.start()
-    t1.join(); t2.join()
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
 
     assert sorted(results) == [202, 202]
     feed = client.get("/api/feed").json()
