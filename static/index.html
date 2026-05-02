@@ -16,6 +16,7 @@
     <button class="tab-btn" data-dash-tab="action-queue">
       Action Queue <span id="action-queue-badge" class="badge" style="display:none;margin-left:4px;background:#c44;color:#fff;border-radius:10px;padding:1px 7px;font-size:0.7rem;">0</span>
     </button>
+    <button class="tab-btn" data-dash-tab="logs">Logs</button>
   </nav>
   <div style="display:flex;align-items:center;gap:12px;">
     <span id="version-badge">loop-monitor</span>
@@ -67,6 +68,24 @@
       </tbody>
     </table>
   </div>
+</section>
+
+<section id="logs-section" style="display:none;">
+  <div class="section-title">Logs</div>
+  <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center;">
+    <select id="logs-handler" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:0.75rem;padding:3px 6px;border-radius:4px;"></select>
+    <input id="logs-filter" type="text" placeholder="filter (literal substring)" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:0.75rem;padding:3px 6px;border-radius:4px;min-width:240px;" />
+    <select id="logs-tail" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:0.75rem;padding:3px 6px;border-radius:4px;">
+      <option value="200">200</option>
+      <option value="500">500</option>
+      <option value="1000">1000</option>
+      <option value="all">all</option>
+    </select>
+    <button id="logs-refresh" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:0.75rem;padding:3px 10px;border-radius:4px;cursor:pointer;">Refresh</button>
+    <span id="logs-meta" style="color:var(--muted);font-size:0.7rem;"></span>
+  </div>
+  <div id="logs-orphan-banner" style="display:none;background:#5a1d1d;color:#ffdada;border:1px solid #c44;border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:0.8rem;"></div>
+  <pre id="logs-output" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;max-height:70vh;overflow:auto;font-size:0.75rem;line-height:1.4;white-space:pre-wrap;word-break:break-all;">Click Refresh to load.</pre>
 </section>
 
 <section id="events-graph-section" style="display:none">

@@ -9,6 +9,7 @@ import { renderActive, renderAgents } from '/js/components/stats.js';
 import { initRunsPanel, checkHash } from '/js/components/runs.js';
 import { fetchClaudeUsage } from '/js/components/claude_usage.js';
 import { fetchActionQueue, initActionQueue, renderActionQueue } from '/js/components/action_queue.js';
+import { initLogs } from '/js/components/logs.js';
 
 async function fetchAll() {
   try {
@@ -50,6 +51,7 @@ initGraphTooltip();
 initVersionBadge();
 initLoopSelector(fetchAll);
 initActionQueue();
+initLogs();
 
 document.getElementById('feed-role-filter').addEventListener('change', fetchAll);
 document.getElementById('feed-status-filter').addEventListener('change', fetchAll);
