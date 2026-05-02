@@ -27,6 +27,7 @@ its own version (currently `1.0`) baked into every payload.
 - [LM-53] Add per-project cycle time panel and 7-day sparkline to home dashboard (#61)
 - [LM-83] Split server.py into server/ package (routes, models, db, helpers) (#87)
 - [LM-96] Add terminal dashboard script (#97)
+- [LM-102] add git_sha to /api/health (#103)
 ## [0.1.1] - 2026-04-27
 
 Catch-up release. v0.1.0 shipped a stale embedded copy of bounty-monitor
