@@ -123,3 +123,59 @@ def test_history_loop_id_filter(isolated_client):
     assert resp_all.status_code == 200
     all_proj = [r for r in resp_all.json() if r["project"] == "ph"]
     assert len(all_proj) == 2
+
+
+def test_prs_unknown_slug_returns_empty(isolated_client):
+    resp = isolated_client.get("/api/projects/no-such-project/prs")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_prs_lists_open_pipeline_runs(isolated_client):
+    server._insert_event(server.ReportPayload(
+        project="ppl", role="dev", event_type="dev_start",
+        issue_number=101, pr_number=201,
+    ))
+    server._insert_event(server.ReportPayload(
+        project="ppl", role="reviewer", event_type="rework_start",
+        issue_number=101, pr_number=201,
+    ))
+    resp = isolated_client.get("/api/projects/ppl/prs")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    pr = data[0]
+    assert pr["pr_number"] == 201
+    assert pr["last_event"] == "rework_start"
+    assert pr["stage"] == "needs-rework"
+    assert pr["is_finished"] is False
+    assert pr["github_url"].endswith("/pull/201")
+    assert pr["time_in_stage_seconds"] is not None
+    assert pr["retry_count"] == 0
+
+
+def test_prs_excludes_finished_by_default(isolated_client):
+    server._insert_event(server.ReportPayload(
+        project="ppl", role="dev", event_type="dev_start",
+        issue_number=110, pr_number=210,
+    ))
+    server._insert_event(server.ReportPayload(
+        project="ppl", role="dev", event_type="dev_start",
+        issue_number=111, pr_number=211,
+    ))
+    server._insert_event(server.ReportPayload(
+        project="ppl", role="merge", event_type="finished",
+        issue_number=111, pr_number=211, detail="merged",
+    ))
+
+    open_only = isolated_client.get("/api/projects/ppl/prs").json()
+    pr_nums = {p["pr_number"] for p in open_only}
+    assert 210 in pr_nums
+    assert 211 not in pr_nums
+
+    all_prs = isolated_client.get("/api/projects/ppl/prs?include_finished=true").json()
+    pr_nums_all = {p["pr_number"] for p in all_prs}
+    assert 210 in pr_nums_all
+    assert 211 in pr_nums_all
+    finished_pr = next(p for p in all_prs if p["pr_number"] == 211)
+    assert finished_pr["is_finished"] is True

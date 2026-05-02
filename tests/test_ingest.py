@@ -93,3 +93,34 @@ def test_loop_id_null_when_absent(isolated_client):
     conn.close()
     assert row is not None
     assert row[0] is None
+
+
+def test_concurrent_reports_both_persisted(shared_client):
+    """Concurrent POST /api/report writes must both persist (WAL + busy_timeout)."""
+    import threading
+
+    project = "proj-concurrent"
+    results: list[int] = []
+    lock = threading.Lock()
+
+    def fire(role: str):
+        resp = shared_client.post("/api/report", json={
+            "project": project,
+            "role": role,
+            "model": "claude-3",
+            "event_type": "started",
+        })
+        with lock:
+            results.append(resp.status_code)
+
+    t1 = threading.Thread(target=fire, args=("builder",))
+    t2 = threading.Thread(target=fire, args=("reviewer",))
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
+
+    assert sorted(results) == [202, 202]
+    feed = shared_client.get("/api/feed").json()
+    roles = {e["role"] for e in feed if e["project"] == project}
+    assert {"builder", "reviewer"}.issubset(roles)
