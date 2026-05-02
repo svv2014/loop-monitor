@@ -18,6 +18,7 @@ app = FastAPI(title="Loop Monitor", lifespan=lifespan)
 from server.routes import (  # noqa: E402
     action_queue,
     board,
+    claude_usage,
     feed,
     graph,
     health,
@@ -34,6 +35,7 @@ app.include_router(runs.router)
 app.include_router(stats.router)
 app.include_router(graph.router)
 app.include_router(action_queue.router)
+app.include_router(claude_usage.router)
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
