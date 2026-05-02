@@ -1,3 +1,4 @@
+import re
 import time
 
 
@@ -80,6 +81,15 @@ def test_health_loop_ids_field(isolated_client):
     assert "loop_ids" in data
     assert "(unknown)" in data["loop_ids"]
     assert "loop-a" in data["loop_ids"]
+
+
+def test_health_git_sha_field(isolated_client):
+    resp = isolated_client.get("/api/health")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "git_sha" in data
+    sha = data["git_sha"]
+    assert sha == "unknown" or re.match(r"^[0-9a-f]{7}$", sha)
 
 
 def test_health_loop_ids_empty_db(isolated_client):
