@@ -10,3 +10,6 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+
+# Visual regression diff artifacts (never committed)
+tests/visual/_artifacts/
