@@ -1,10 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Logo from './components/Logo';
-import TopBar from './components/TopBar';
 import NavRail from './components/NavRail';
+import TopBar from './components/TopBar';
 import Overview from './screens/Overview';
 import Logs from './screens/Logs';
+import ProjectDetail from './screens/ProjectDetail';
+import Queue from './screens/Queue';
+import { useHashRoute } from './router';
 import { fetchActive, fetchHealth } from './lib/api';
 
 const SCREEN_KEYS: Record<string, string> = {
@@ -16,7 +19,56 @@ const SCREEN_KEYS: Record<string, string> = {
 };
 
 export default function App() {
-  const [screen, setScreen] = useState('overview');
+  const { screen: hashScreen, projectId: hashProjectId, navigateTo } = useHashRoute();
+
+  // Derive UI screen from hash. 'project' is a sub-state of 'projects' nav item.
+  const [navScreen, setNavScreen] = useState<string>(
+    hashScreen === 'project' ? 'projects' : hashScreen,
+  );
+  const [projectId, setProjectId] = useState<string | null>(hashProjectId);
+  const [allProjectIds, setAllProjectIds] = useState<string[]>([]);
+
+  // Fetch all known project IDs from /api/status for the project switcher
+  useEffect(() => {
+    fetch('/api/status')
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then((data: Array<{ project: string }>) => {
+        const ids = Array.from(new Set(data.map(e => e.project))).sort();
+        setAllProjectIds(ids);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  // When the hash changes externally (back/forward), sync local state
+  useEffect(() => {
+    if (hashScreen === 'project' && hashProjectId) {
+      setNavScreen('projects');
+      setProjectId(hashProjectId);
+    } else if (hashScreen !== 'project') {
+      setNavScreen(hashScreen);
+    }
+  }, [hashScreen, hashProjectId]);
+
+  function handleNavChange(s: string) {
+    setNavScreen(s);
+    if (s !== 'projects') {
+      setProjectId(null);
+      navigateTo(s as 'overview' | 'queue' | 'projects' | 'workers' | 'project' | 'logs');
+    }
+  }
+
+  function handleProjectChange(id: string) {
+    setProjectId(id);
+    navigateTo('project', id);
+  }
+
+  function handleBack() {
+    setProjectId(null);
+    navigateTo('overview');
+    setNavScreen('overview');
+  }
+
+  const isProjectDetail = navScreen === 'projects' && projectId != null;
 
   const activeQuery = useQuery({
     queryKey: ['active'],
@@ -35,7 +87,7 @@ export default function App() {
     function onKey(e: KeyboardEvent) {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       const next = SCREEN_KEYS[e.key];
-      if (next) setScreen(next);
+      if (next) handleNavChange(next);
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -51,10 +103,37 @@ export default function App() {
     <div className="app">
       <Logo />
       <TopBar events={events} online={online} version={version} />
-      <NavRail screen={screen} setScreen={setScreen} />
+      <NavRail screen={isProjectDetail ? 'projects' : navScreen} setScreen={handleNavChange} />
       <main className="main">
-        {screen === 'overview' && <Overview />}
-        {screen === 'logs' && <Logs />}
+        {isProjectDetail && projectId != null ? (
+          <ProjectDetail
+            projectId={projectId}
+            allProjectIds={allProjectIds.length > 0 ? allProjectIds : [projectId]}
+            onBack={handleBack}
+            onProjectChange={handleProjectChange}
+          />
+        ) : navScreen === 'overview' ? (
+          <Overview />
+        ) : navScreen === 'queue' ? (
+          <Queue />
+        ) : navScreen === 'logs' ? (
+          <Logs />
+        ) : (
+          <div style={{ padding: 'var(--pad-4)' }}>
+            <p className="muted mono" style={{ fontSize: 12 }}>
+              {navScreen === 'projects'
+                ? 'Select a project — navigate via URL hash: #project=<id>'
+                : `${navScreen} screen coming soon`}
+            </p>
+            {navScreen === 'projects' && allProjectIds.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--pad-2)', marginTop: 'var(--pad-3)' }}>
+                {allProjectIds.map(id => (
+                  <button key={id} className="btn" onClick={() => handleProjectChange(id)}>{id}</button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </main>
     </div>
   );
