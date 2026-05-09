@@ -1,6 +1,8 @@
 import Logo from './components/Logo';
 import TopBar from './components/TopBar';
 import NavRail from './components/NavRail';
+import Queue from './screens/Queue';
+import './lib/tokens.css';
 import { useState } from 'react';
 
 export default function App() {
@@ -11,7 +13,9 @@ export default function App() {
       <Logo />
       <TopBar events={[]} online={false} version="0.0.0" />
       <NavRail screen={screen} setScreen={setScreen} />
-      <main className="main"></main>
+      <main className="main">
+        {screen === 'queue' && <Queue />}
+      </main>
     </div>
   );
 }

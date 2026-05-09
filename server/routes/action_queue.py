@@ -1,11 +1,12 @@
 import os
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from server.constants import PROJECTS
 from server.db import get_db
+from server.helpers.github import fetch_failure_context
 from server.helpers.timeline import parse_ts
 
 router = APIRouter()
@@ -109,3 +110,32 @@ def action_queue():
         })
     result.sort(key=lambda x: x["age_seconds"], reverse=True)
     return result
+
+
+@router.get("/api/action_queue/{project}/{kind}/{number}/failure")
+def action_queue_failure(project: str, kind: str, number: int) -> dict[str, Any]:
+    """Return the most recent failure context for a specific ticket.
+
+    Parses the <!-- failure-context --> block from the latest matching GH comment.
+    Returns 200 with excerpt=null when no failure comment exists (not 404).
+    """
+    if kind not in ("issue", "pr"):
+        raise HTTPException(status_code=400, detail="kind must be 'issue' or 'pr'")
+    repo = PROJECTS.get(project)
+    if repo is None:
+        raise HTTPException(status_code=404, detail="unknown project")
+    ctx = fetch_failure_context(repo, kind, number)
+    github_url: Optional[str] = None
+    if repo:
+        section = "issues" if kind == "issue" else "pull"
+        github_url = f"https://github.com/{repo}/{section}/{number}"
+    return {
+        "excerpt": ctx.get("excerpt"),
+        "model": ctx.get("model"),
+        "run_id": ctx.get("run_id"),
+        "retry_count": ctx.get("retry_count", 0),
+        "timestamp": ctx.get("timestamp", ""),
+        "github_comment_url": ctx.get("github_comment_url"),
+        "log_path": ctx.get("log_path"),
+        "github_url": github_url,
+    }
