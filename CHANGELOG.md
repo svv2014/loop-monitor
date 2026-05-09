@@ -10,24 +10,61 @@ its own version (currently `1.0`) baked into every payload.
 
 ## [Unreleased]
 
+The "Dope UI" React migration is in progress on this line — phases 0
+(visual harness), 1 (Vite scaffold), 2 (API client), 3.2 (Queue
+screen), 4.1 (loop selector + version badge) and various reliability
+panels are landed or in flight. v0.3.0 will cut after the migration
+completes.
 
-### Changed
-- Draft: [LM-18] Timeline: per-event cumulative time and feed age_seconds (#20)
-- Draft: [LM-19] Mark PR/issue as finished; report open→close lifecycle time (#23)
-- [LM-62] Add GET /api/events_graph — 24h bucketed event counts by stage (#71)
-- [LM-56] Add Claude usage panel to dashboard (#72)
-- [LM-28] UI: show monitor version in header; add loop_id filter selector (#76)
-- [LM-79] Add DB migrations framework (replace CREATE IF NOT EXISTS pattern) (#86)
-- [LM-80] Remove dead shell scripts, add *.db to .gitignore, document run.sh (#89)
-- [LM-85] Modularize static/index.html — extract JS into static/js/ ES modules (#90)
-- [LM-81] Add baseline linting + type-checking (ruff + mypy + pre-commit) (#91)
-- [LM-82] Add nightly retention script to prune old bounty.db rows (#92)
+## [0.2.1] - 2026-05-09
+
+A two-week features-and-foundations batch. New dashboard surfaces
+(Logs, Action Queue, Claude Usage, terminal dashboard, PR Monitor),
+a server-side modularization, baseline lint/type infra, and the
+groundwork for the Dope UI React migration.
+
+### Added — dashboard surfaces
+- [LM-98] Logs tab and `/api/logs` endpoint with orphan detection (#104)
+- [LM-47] Action Queue dashboard tab + API (#94)
+- [LM-56] Claude usage panel (#72)
+- [LM-50] Per-project PR Monitor endpoint and table (#95)
+- [LM-55] `/api/claude_usage` endpoint with env-var config and cached Anthropic admin source (#101)
+- [LM-53] Per-project cycle time panel + 7-day sparkline (#61)
+- [LM-62] `/api/events_graph` — 24h bucketed event counts by stage (#71)
 - [LM-30] Feed filter controls — role and status filtering (#93)
-- [LM-47] Add Action Queue dashboard tab and API (#94)
-- [LM-53] Add per-project cycle time panel and 7-day sparkline to home dashboard (#61)
-- [LM-83] Split server.py into server/ package (routes, models, db, helpers) (#87)
-- [LM-96] Add terminal dashboard script (#97)
-- [LM-102] add git_sha to /api/health (#103)
+- [LM-28] Monitor version + loop_id filter selector in header (#76)
+- [LM-96] Terminal dashboard script (#97)
+- [LM-102] git_sha in `/api/health` (#103)
+
+### Added — Dope UI migration foundations
+- [LM-114] Vite + React + TypeScript scaffold (#131)
+- [LM-115] API client, transforms, fixture mode (early)
+- [LM-117] Phase 3.2 Action Queue screen (React port, partial; full screen lands in v0.3)
+- [LM-120] Loop selector + version badge in TopBar (React) (#139)
+- [LM-136] Stuck detector panel (#145)
+- Migration plan + design standards + ADRs documented (#112)
+
+### Added — server / infra
+- [LM-83] Split `server.py` into `server/` package (routes, models, db, helpers) (#87)
+- [LM-79] DB migrations framework (replaces CREATE IF NOT EXISTS pattern) (#86)
+- [LM-85] Modularized `static/index.html` — extracted JS into `static/js/` ES modules (#90)
+- [LM-81] Baseline linting + type-checking (ruff + mypy + pre-commit) (#91)
+- [LM-82] Nightly retention script to prune old `bounty.db` rows (#92)
+- [LM-39] Enable WAL mode, busy_timeout, OperationalError logging (#99)
+- [LM-84] Split `test_server.py` into per-area test modules (#88)
+- [LM-80] Remove dead shell scripts, add `*.db` to `.gitignore`, document `run.sh` (#89)
+
+### Drafts (carried forward)
+- [LM-18] Timeline: per-event cumulative time and feed age_seconds (#20)
+- [LM-19] Mark PR/issue as finished; report open→close lifecycle time (#23)
+
+### Note on versioning
+
+Pre-1.0 patch number (v0.2.1) was chosen deliberately — the Dope UI
+React migration is mid-flight and will be the headline of v0.3.0 once
+all phase-3 screens land. v0.2.1 captures the genuine new functionality
+and infra work that's already in production behavior on the legacy UI.
+
 ## [0.1.1] - 2026-04-27
 
 Catch-up release. v0.1.0 shipped a stale embedded copy of bounty-monitor
