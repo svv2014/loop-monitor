@@ -21,6 +21,7 @@ import type {
   ScannerState,
   LogsResponse,
   IssueCostRow,
+  PipelineHealth,
 } from './types';
 import * as fx from './fixtures';
 
@@ -164,4 +165,9 @@ export async function fetchLogs(handler: string, filter: string, tail: string): 
     throw new Error((body as { detail?: string }).detail || res.statusText);
   }
   return res.json() as Promise<LogsResponse>;
+}
+
+export async function fetchPipelineHealth(): Promise<PipelineHealth> {
+  if (isFixtureMode()) return fx.getFixturePipelineHealth();
+  return get<PipelineHealth>('/api/health/pipeline');
 }

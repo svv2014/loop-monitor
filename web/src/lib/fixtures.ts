@@ -20,6 +20,7 @@ import type {
   ClaudeUsage,
   ScannerState,
   IssueCostRow,
+  PipelineHealth,
 } from './types';
 
 const PROJECTS = [
@@ -372,5 +373,28 @@ export function getFixtureScannerState(): ScannerState {
       { project: 'loop-monitor', kind: 'issue', number: 137, stage: 'po',  count: 1, max: 2 },
       { project: 'loop',         kind: 'issue', number: 142, stage: 'dev', count: 2, max: 2 },
     ],
+  };
+}
+
+export function getFixturePipelineHealth(): PipelineHealth {
+  return {
+    scanner: {
+      status: 'ok',
+      last_tick_iso: '2026-05-10T12:00:00+00:00',
+      interval_seconds: 60,
+      detail: 'scanner running normally',
+    },
+    orchestrator: {
+      status: 'stale',
+      last_tick_iso: '2026-05-10T11:57:00+00:00',
+      interval_seconds: 60,
+      detail: 'last invocation: 3 min ago',
+    },
+    event_queue: {
+      status: 'down',
+      last_tick_iso: null,
+      interval_seconds: null,
+      detail: 'connection refused at localhost:8765',
+    },
   };
 }
