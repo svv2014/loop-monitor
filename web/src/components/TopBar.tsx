@@ -1,33 +1,46 @@
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchActive } from '../lib/api';
 
+function timeFmt(d: Date): string {
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  return `${hh}:${mm}:${ss}`;
+}
+
+function useTick(ms = 1000) {
+  const [, setN] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setN(n => n + 1), ms);
+    return () => clearInterval(id);
+  }, [ms]);
+}
+
 export function TopBar() {
-  const query = useQuery({
+  useTick(1000);
+  const now = new Date();
+  const { data: workers, isError } = useQuery({
     queryKey: ['active'],
     queryFn: () => fetchActive(),
     refetchInterval: 5000,
     staleTime: 0,
   });
-
-  const workerCount = query.data?.length ?? 0;
-  const connected = !query.isError;
-
+  const online = !isError;
   return (
-    <header style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.5rem 1rem', borderBottom: '1px solid #333' }}>
-      <span style={{ fontWeight: 600 }}>Loop Monitor</span>
-      <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        <span>{workerCount} active</span>
-        <span
-          title={connected ? 'Connected' : 'Connection error'}
-          style={{
-            width: 10,
-            height: 10,
-            borderRadius: '50%',
-            background: connected ? '#22c55e' : '#ef4444',
-            display: 'inline-block',
-          }}
-        />
-      </span>
-    </header>
+    <div className="topbar">
+      <div className="left">
+        <span className="mono" style={{ color: 'var(--fg)', fontWeight: 500 }}>
+          PIPELINE
+          <span style={{ color: 'var(--fg-4)', marginLeft: 6 }}>v2</span>
+        </span>
+        <span style={{ width: 1, height: 14, background: 'var(--border)' }}></span>
+        <span><span className="dot"></span>&nbsp;{online ? 'CONNECTED' : 'OFFLINE'}</span>
+        <span>· {workers?.length ?? 0} active</span>
+      </div>
+      <div className="right">
+        <span>{timeFmt(now)}</span>
+      </div>
+    </div>
   );
 }
