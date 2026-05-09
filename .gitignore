@@ -13,3 +13,7 @@ venv/
 
 # Visual regression diff artifacts (never committed)
 tests/visual/_artifacts/
+
+# Frontend build artifacts
+web/node_modules/
+static/dist/
