@@ -1,0 +1,148 @@
+.root {
+  border: 1px solid var(--border);
+  background: var(--bg-1);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--pad-2) var(--pad-3);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--fg-3);
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: var(--pad-2);
+}
+
+.select {
+  background: var(--bg-1);
+  color: var(--fg-2);
+  border: 1px solid var(--border);
+  padding: 2px var(--pad-2);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+}
+
+.select:hover {
+  border-color: var(--border-strong);
+}
+
+.checkLabel {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.prNum {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.titleCell {
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+.branch {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-4);
+  margin-top: 2px;
+}
+
+.stageBadge {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 1px 5px;
+  border: 1px solid currentColor;
+  color: var(--fg-3);
+}
+
+.stageDev   { color: var(--role-dev); }
+.stageReview{ color: var(--role-reviewer); }
+.stageQa    { color: var(--role-qa); }
+.stageMerge { color: var(--role-merge); }
+.stagePo    { color: var(--role-po); }
+.stageFail  { color: var(--fail); }
+
+.timeFresh  { color: var(--pass); }
+.timeWarn   { color: var(--warn); }
+.timeDanger { color: var(--fail); }
+
+.lastEvent {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+.ghLink {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-4);
+  text-decoration: none;
+  transition: color 150ms;
+}
+
+.ghLink:hover {
+  color: var(--fg-2);
+}
+
+.badgeDraft {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 1px 4px;
+  border: 1px solid var(--fg-4);
+  color: var(--fg-4);
+}
+
+.badgeDone {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 1px 4px;
+  border: 1px solid var(--pass);
+  color: var(--pass);
+}
+
+.rowFinished {
+  opacity: 0.55;
+}
+
+.empty {
+  padding: var(--pad-3) var(--pad-4);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg-4);
+  text-align: center;
+}
+
+.errorState {
+  padding: var(--pad-3) var(--pad-4);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fail);
+  text-align: center;
+}

@@ -1,0 +1,141 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+/* ── Screen header ── */
+.screenHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--pad-3);
+  padding: var(--pad-2) var(--pad-4);
+  border-bottom: 1px solid var(--border);
+  min-height: 44px;
+}
+
+.title {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  margin: 0;
+  color: var(--fg);
+}
+
+.projectSelect {
+  background: var(--bg-1);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  padding: 4px var(--pad-2);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+}
+
+.projectSelect:hover {
+  border-color: var(--border-strong);
+}
+
+.meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-3);
+  white-space: nowrap;
+}
+
+/* ── KPI strip ── */
+.kpiStrip {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  border-bottom: 1px solid var(--border);
+}
+
+.kpiCell {
+  padding: var(--pad-3) var(--pad-4);
+  border-right: 1px solid var(--border);
+}
+
+.kpiCell:last-child {
+  border-right: none;
+}
+
+.kpiLabel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--fg-3);
+  margin-bottom: 4px;
+}
+
+.kpiValue {
+  font-size: 22px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Body ── */
+.body {
+  padding: var(--pad-4);
+  display: grid;
+  gap: var(--pad-3);
+}
+
+/* ── Two-column row ── */
+.twoCol {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--pad-3);
+}
+
+/* ── Role bar chart ── */
+.roleBarGrid {
+  padding: var(--pad-3) var(--pad-4);
+  display: grid;
+  gap: 10px;
+}
+
+.roleBarRow {
+  display: grid;
+  grid-template-columns: 90px 1fr 50px;
+  align-items: center;
+  gap: 10px;
+}
+
+.roleBarTrack {
+  height: 12px;
+  background: var(--bg-2);
+  position: relative;
+  overflow: hidden;
+}
+
+.roleBarFill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  transition: width 300ms ease;
+}
+
+/* ── Feed ── */
+.feedScroll {
+  overflow: auto;
+  max-height: 360px;
+}
+
+.emptyFeed {
+  padding: var(--pad-3) var(--pad-4);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg-4);
+  text-align: center;
+}
+
+.emptyCell {
+  padding: var(--pad-3) var(--pad-4);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg-4);
+  text-align: center;
+}
