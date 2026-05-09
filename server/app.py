@@ -26,6 +26,7 @@ from server.routes import (  # noqa: E402
     ingest,
     logs,
     runs,
+    scanner_state,
     stats,
 )
 
@@ -39,6 +40,7 @@ app.include_router(graph.router)
 app.include_router(action_queue.router)
 app.include_router(claude_usage.router)
 app.include_router(logs.router)
+app.include_router(scanner_state.router)
 
 if os.path.isdir("static/dist"):
     app.mount("/v2", StaticFiles(directory="static/dist", html=True), name="dist")
