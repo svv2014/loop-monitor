@@ -10,3 +10,7 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+
+# Frontend build artifacts
+web/node_modules/
+static/dist/

@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -38,6 +39,9 @@ app.include_router(graph.router)
 app.include_router(action_queue.router)
 app.include_router(claude_usage.router)
 app.include_router(logs.router)
+
+if os.path.isdir("static/dist"):
+    app.mount("/v2", StaticFiles(directory="static/dist", html=True), name="dist")
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
