@@ -3,10 +3,12 @@ import { useQuery } from '@tanstack/react-query';
 import Logo from './components/Logo';
 import TopBar from './components/TopBar';
 import NavRail from './components/NavRail';
+import Overview from './screens/Overview';
 import { fetchActive, fetchHealth } from './lib/api';
 
 export default function App() {
   const [screen, setScreen] = useState('overview');
+  const [, setSelectedProject] = useState<string | null>(null);
 
   const activeQuery = useQuery({
     queryKey: ['active'],
@@ -32,7 +34,14 @@ export default function App() {
       <Logo />
       <TopBar events={events} online={online} version={version} />
       <NavRail screen={screen} setScreen={setScreen} />
-      <main className="main"></main>
+      <main className="main">
+        {screen === 'overview' && (
+          <Overview
+            setSelectedProject={setSelectedProject}
+            setScreen={setScreen}
+          />
+        )}
+      </main>
     </div>
   );
 }
