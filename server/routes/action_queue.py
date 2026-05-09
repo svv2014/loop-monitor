@@ -11,9 +11,27 @@ from server.helpers.timeline import parse_ts
 router = APIRouter()
 
 STUCK_STAGES = {"blocked", "needs-clarification"}
-TIMEOUT_STAGES = {"in-progress", "in-review", "in-rework"}
+TIMEOUT_STAGES = {"in-progress", "in-review", "in-rework", "needs-qa", "needs-review", "ready-for-qa"}
 QA_FAIL_STAGE = "qa-fail"
 QA_FAIL_RETRY_THRESHOLD = 3
+
+STAGE_THRESHOLD_ENV = {
+    "in-progress":  "HANDLER_TIMEOUT_DEV",
+    "in-rework":    "HANDLER_TIMEOUT_DEV",
+    "in-review":    "HANDLER_TIMEOUT_REVIEW",
+    "needs-review": "HANDLER_TIMEOUT_REVIEW",
+    "needs-qa":     "HANDLER_TIMEOUT_QA",
+    "ready-for-qa": "HANDLER_TIMEOUT_QA",
+}
+
+STAGE_DEFAULTS = {
+    "in-progress":  7200,
+    "in-rework":    7200,
+    "in-review":    1800,
+    "needs-review": 1800,
+    "needs-qa":     3600,
+    "ready-for-qa": 3600,
+}
 
 
 def _handler_timeout_seconds() -> int:
@@ -21,6 +39,17 @@ def _handler_timeout_seconds() -> int:
         return int(os.environ.get("HANDLER_TIMEOUT", "3600"))
     except ValueError:
         return 3600
+
+
+def _threshold_for_stage(stage: str) -> int:
+    env_key = STAGE_THRESHOLD_ENV.get(stage)
+    fallback = STAGE_DEFAULTS.get(stage, _handler_timeout_seconds() * 2)
+    if env_key:
+        try:
+            return int(os.environ.get(env_key, fallback))
+        except ValueError:
+            return fallback
+    return fallback
 
 
 def _action_queue_reason(
@@ -41,7 +70,6 @@ def action_queue():
 
     Derived from the latest event per (project, kind, number). No GitHub API call.
     """
-    threshold = _handler_timeout_seconds() * 2
     conn = get_db()
     rows = conn.execute(
         """
@@ -80,6 +108,7 @@ def action_queue():
         stage = (r["event_type"] or "").lower()
         created = parse_ts(r["created_at"])
         age_seconds = int((now - created).total_seconds()) if created else 0
+        threshold = _threshold_for_stage(stage)
         reason = _action_queue_reason(stage, age_seconds, r["rework_count"] or 0, threshold)
         if reason is None:
             continue
@@ -104,6 +133,7 @@ def action_queue():
             "stage": stage,
             "age_seconds": age_seconds,
             "reason": reason,
+            "threshold_seconds": threshold if reason == "timeout" else None,
             "loop_id": r["loop_id"],
             "github_url": github_url,
         })

@@ -37,7 +37,7 @@ def test_action_queue_needs_clarification(isolated_client):
 
 
 def test_action_queue_timeout_threshold(isolated_client, monkeypatch):
-    monkeypatch.setenv("HANDLER_TIMEOUT", "100")  # threshold = 200
+    monkeypatch.setenv("HANDLER_TIMEOUT_DEV", "200")
     server._insert_event(server.ReportPayload(
         project="loop", role="dev", event_type="in-progress", issue_number=11
     ))
@@ -57,7 +57,7 @@ def test_action_queue_timeout_threshold(isolated_client, monkeypatch):
 
 
 def test_action_queue_in_progress_below_threshold_excluded(isolated_client, monkeypatch):
-    monkeypatch.setenv("HANDLER_TIMEOUT", "3600")
+    monkeypatch.setenv("HANDLER_TIMEOUT_DEV", "3600")
     server._insert_event(server.ReportPayload(
         project="loop", role="dev", event_type="in-progress", issue_number=13
     ))
@@ -67,7 +67,7 @@ def test_action_queue_in_progress_below_threshold_excluded(isolated_client, monk
 
 
 def test_action_queue_sorted_by_age_desc(isolated_client, monkeypatch):
-    monkeypatch.setenv("HANDLER_TIMEOUT", "100")
+    monkeypatch.setenv("HANDLER_TIMEOUT_DEV", "100")
     server._insert_event(server.ReportPayload(
         project="loop", role="dev", event_type="blocked", issue_number=200
     ))
@@ -84,3 +84,76 @@ def test_action_queue_sorted_by_age_desc(isolated_client, monkeypatch):
     data = resp.json()
     nums = [it["number"] for it in data if it["number"] in (200, 201)]
     assert nums == [200, 201]
+
+
+def test_action_queue_per_stage_threshold_dev_override(isolated_client, monkeypatch):
+    monkeypatch.setenv("HANDLER_TIMEOUT_DEV", "500")
+    server._insert_event(server.ReportPayload(
+        project="loop", role="dev", event_type="in-progress", issue_number=300
+    ))
+    conn = sqlite3.connect(server.db.DB_PATH)
+    conn.execute(
+        "UPDATE events SET created_at = datetime('now', '-600 seconds') WHERE issue_number = 300"
+    )
+    conn.commit()
+    conn.close()
+    resp = isolated_client.get("/api/action_queue")
+    data = resp.json()
+    timeout_items = [it for it in data if it["reason"] == "timeout" and it["number"] == 300]
+    assert len(timeout_items) == 1
+    assert timeout_items[0]["threshold_seconds"] == 500
+
+
+def test_action_queue_needs_qa_past_threshold(isolated_client, monkeypatch):
+    monkeypatch.setenv("HANDLER_TIMEOUT_QA", "60")
+    server._insert_event(server.ReportPayload(
+        project="loop", role="dev", event_type="needs-qa", issue_number=301
+    ))
+    conn = sqlite3.connect(server.db.DB_PATH)
+    conn.execute(
+        "UPDATE events SET created_at = datetime('now', '-120 seconds') WHERE issue_number = 301"
+    )
+    conn.commit()
+    conn.close()
+    resp = isolated_client.get("/api/action_queue")
+    data = resp.json()
+    timeout_items = [it for it in data if it["reason"] == "timeout" and it["number"] == 301]
+    assert len(timeout_items) == 1
+    assert timeout_items[0]["stage"] == "needs-qa"
+    assert timeout_items[0]["threshold_seconds"] == 60
+
+
+def test_action_queue_needs_qa_under_threshold_excluded(isolated_client, monkeypatch):
+    monkeypatch.setenv("HANDLER_TIMEOUT_QA", "3600")
+    server._insert_event(server.ReportPayload(
+        project="loop", role="dev", event_type="needs-qa", issue_number=302
+    ))
+    resp = isolated_client.get("/api/action_queue")
+    data = resp.json()
+    assert all(it["number"] != 302 for it in data)
+
+
+def test_action_queue_threshold_seconds_field(isolated_client, monkeypatch):
+    monkeypatch.setenv("HANDLER_TIMEOUT_QA", "60")
+    server._insert_event(server.ReportPayload(
+        project="loop", role="dev", event_type="needs-qa", issue_number=303
+    ))
+    server._insert_event(server.ReportPayload(
+        project="loop", role="dev", event_type="blocked", issue_number=304
+    ))
+    conn = sqlite3.connect(server.db.DB_PATH)
+    conn.execute(
+        "UPDATE events SET created_at = datetime('now', '-120 seconds') WHERE issue_number = 303"
+    )
+    conn.commit()
+    conn.close()
+    resp = isolated_client.get("/api/action_queue")
+    data = resp.json()
+    timeout_item = next((it for it in data if it["number"] == 303), None)
+    stuck_item = next((it for it in data if it["number"] == 304), None)
+    assert timeout_item is not None
+    assert timeout_item["reason"] == "timeout"
+    assert timeout_item["threshold_seconds"] == 60
+    assert stuck_item is not None
+    assert stuck_item["reason"] == "stuck_label"
+    assert stuck_item["threshold_seconds"] is None
