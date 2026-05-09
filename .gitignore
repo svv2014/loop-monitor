@@ -10,3 +10,8 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+
+# React app
+web/node_modules/
+web/dist/
+static/dist/
