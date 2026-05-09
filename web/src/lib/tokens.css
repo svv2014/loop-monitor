@@ -492,6 +492,105 @@ table.t tr:hover td { background: oklch(1 0 0 / 0.02); }
 }
 .ticker .item { display: inline-flex; gap: 6px; align-items: center; }
 
+/* Drawer overlay — shared by BasicDrawer and FailureInspector */
+.drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: oklch(0 0 0 / 0.55);
+  z-index: 200;
+  display: flex;
+  justify-content: flex-end;
+}
+.drawer {
+  width: min(560px, 100vw);
+  height: 100vh;
+  background: var(--bg-1);
+  border-left: var(--hairline) solid var(--border-strong);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.drawer-close {
+  flex-shrink: 0;
+}
+
+/* FailureInspector */
+.fi-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pad-2);
+  background: var(--bg-2);
+  flex-shrink: 0;
+}
+.fi-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow: hidden;
+}
+.fi-body {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.fi-meta {
+  padding: var(--pad-2) var(--pad-3);
+  border-bottom: var(--hairline) solid var(--border);
+  display: grid;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.fi-meta-row {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: var(--pad-2);
+  align-items: baseline;
+  font-size: 12px;
+}
+.fi-meta-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-3);
+}
+.fi-meta-value {
+  font-size: 12px;
+  color: var(--fg);
+  word-break: break-all;
+}
+.fi-link {
+  color: var(--info);
+  text-decoration: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.fi-link:hover { text-decoration: underline; }
+.fi-excerpt-h { flex-shrink: 0; }
+.fi-excerpt-wrap {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--pad-3);
+  max-height: 50vh;
+}
+.fi-excerpt {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--fg-2);
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.fi-empty {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  margin: 0;
+}
+
 /* Section heading row separating screens */
 .screen-h {
   display: flex;

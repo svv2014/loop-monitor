@@ -1,3 +1,14 @@
+export interface FailureContext {
+  excerpt: string | null;
+  model: string | null;
+  run_id: string | null;
+  retry_count: number;
+  timestamp: string;
+  github_comment_url: string | null;
+  log_path: string | null;
+  github_url: string | null;
+}
+
 export interface QueueItem {
   project: string;
   kind: 'issue' | 'pr';

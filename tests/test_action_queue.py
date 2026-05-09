@@ -1,7 +1,9 @@
+import json
 import sqlite3
 
 import server
 import server.db
+import server.helpers.github as gh_helper
 
 
 def test_action_queue_empty(isolated_client):
@@ -157,3 +159,98 @@ def test_action_queue_threshold_seconds_field(isolated_client, monkeypatch):
     assert stuck_item is not None
     assert stuck_item["reason"] == "stuck_label"
     assert stuck_item["threshold_seconds"] is None
+
+
+# ---------------------------------------------------------------------------
+# Failure context endpoint
+# ---------------------------------------------------------------------------
+
+_FAILURE_COMMENT = json.dumps([
+    {
+        "id": 1,
+        "body": (
+            "PO failed — see details below.\n"
+            "<!-- failure-context -->\n"
+            "ModuleNotFoundError: No module named 'boba_orchestrator'\n"
+            "model: claude-sonnet-4-6\n"
+            "run_id: run-abc-123\n"
+            "retry_count: 2\n"
+            "log_path: /var/log/loop/boba.log\n"
+            "<!-- /failure-context -->"
+        ),
+        "created_at": "2026-05-02T10:00:00Z",
+        "html_url": "https://github.com/svv2014/loop/issues/42#issuecomment-1",
+    }
+])
+
+_NO_FAILURE_COMMENT = json.dumps([
+    {
+        "id": 2,
+        "body": "Some unrelated comment with no marker.",
+        "created_at": "2026-05-02T09:00:00Z",
+        "html_url": "https://github.com/svv2014/loop/issues/42#issuecomment-2",
+    }
+])
+
+
+def _mock_run_gh_with(stdout: str):
+    def _fake(*args: str) -> str:
+        return stdout
+    return _fake
+
+
+def test_failure_context_no_marker(isolated_client, monkeypatch):
+    """Returns empty payload (excerpt=null) when no failure-context comment exists."""
+    gh_helper._cache.clear()
+    monkeypatch.setattr(gh_helper, "_run_gh", _mock_run_gh_with(_NO_FAILURE_COMMENT))
+    resp = isolated_client.get("/api/action_queue/loop/issue/42/failure")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["excerpt"] is None
+    assert data["model"] is None
+    assert data["run_id"] is None
+    assert data["retry_count"] == 0
+    assert data["log_path"] is None
+
+
+def test_failure_context_with_marker(isolated_client, monkeypatch):
+    """Parses and returns the failure-context block when present."""
+    gh_helper._cache.clear()
+    monkeypatch.setattr(gh_helper, "_run_gh", _mock_run_gh_with(_FAILURE_COMMENT))
+    resp = isolated_client.get("/api/action_queue/loop/issue/42/failure")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "ModuleNotFoundError" in (data["excerpt"] or "")
+    assert data["model"] == "claude-sonnet-4-6"
+    assert data["run_id"] == "run-abc-123"
+    assert data["retry_count"] == 2
+    assert data["log_path"] == "/var/log/loop/boba.log"
+    assert data["timestamp"] == "2026-05-02T10:00:00Z"
+    assert data["github_comment_url"] is not None
+
+
+def test_failure_context_malformed_marker(isolated_client, monkeypatch):
+    """Malformed block (no closing tag) returns empty payload without raising."""
+    gh_helper._cache.clear()
+    bad_comment = json.dumps([{
+        "id": 3,
+        "body": "<!-- failure-context -->\nno closing tag here",
+        "created_at": "2026-05-02T11:00:00Z",
+        "html_url": "https://github.com/svv2014/loop/issues/42#issuecomment-3",
+    }])
+    monkeypatch.setattr(gh_helper, "_run_gh", _mock_run_gh_with(bad_comment))
+    resp = isolated_client.get("/api/action_queue/loop/issue/42/failure")
+    assert resp.status_code == 200
+    assert resp.json()["excerpt"] is None
+
+
+def test_failure_context_unknown_project(isolated_client):
+    """Returns 404 for unknown project slug."""
+    resp = isolated_client.get("/api/action_queue/no-such-project/issue/1/failure")
+    assert resp.status_code == 404
+
+
+def test_failure_context_invalid_kind(isolated_client):
+    """Returns 400 for invalid kind."""
+    resp = isolated_client.get("/api/action_queue/loop/ticket/1/failure")
+    assert resp.status_code == 400

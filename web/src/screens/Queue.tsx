@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import FailureInspector from '../components/FailureInspector';
 import type { QueueItem } from '../lib/types';
 
 function formatAge(seconds: number): string {
@@ -12,16 +13,16 @@ function formatAge(seconds: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-interface DrawerProps {
+interface BasicDrawerProps {
   item: QueueItem;
   onClose: () => void;
 }
 
-function Drawer({ item, onClose }: DrawerProps) {
+function BasicDrawer({ item, onClose }: BasicDrawerProps) {
   return (
     <div className="drawer-overlay" onClick={onClose}>
-      <div className="drawer" onClick={e => e.stopPropagation()}>
-        <button className="drawer-close" onClick={onClose}>×</button>
+      <div className="drawer" onClick={(e) => e.stopPropagation()}>
+        <button className="drawer-close btn" onClick={onClose}>×</button>
         <h2>{item.title || `${item.kind} #${item.number}`}</h2>
         <dl>
           <dt>Project</dt><dd>{item.project}</dd>
@@ -40,6 +41,10 @@ function Drawer({ item, onClose }: DrawerProps) {
       </div>
     </div>
   );
+}
+
+function isFailureRow(item: QueueItem): boolean {
+  return item.stage === 'needs-clarification' || item.reason === 'qa_fail_repeated';
 }
 
 interface RowProps {
@@ -66,7 +71,7 @@ export default function Queue() {
 
   useEffect(() => {
     fetch('/api/action_queue')
-      .then(r => r.json())
+      .then((r) => r.json())
       .then((data: QueueItem[]) => {
         setItems(data);
         setLoading(false);
@@ -75,11 +80,11 @@ export default function Queue() {
   }, []);
 
   const stuckItems = items
-    .filter(i => i.reason === 'stuck_label' || i.reason === 'timeout')
+    .filter((i) => i.reason === 'stuck_label' || i.reason === 'timeout')
     .sort((a, b) => b.age_seconds - a.age_seconds);
 
   const otherItems = items
-    .filter(i => i.reason !== 'stuck_label' && i.reason !== 'timeout')
+    .filter((i) => i.reason !== 'stuck_label' && i.reason !== 'timeout')
     .sort((a, b) => b.age_seconds - a.age_seconds);
 
   if (loading) return <div className="muted">Loading…</div>;
@@ -102,7 +107,7 @@ export default function Queue() {
               </tr>
             </thead>
             <tbody>
-              {stuckItems.map(item => (
+              {stuckItems.map((item) => (
                 <QueueRow
                   key={`${item.project}-${item.kind}-${item.number}`}
                   item={item}
@@ -128,7 +133,7 @@ export default function Queue() {
               </tr>
             </thead>
             <tbody>
-              {otherItems.map(item => (
+              {otherItems.map((item) => (
                 <QueueRow
                   key={`${item.project}-${item.kind}-${item.number}`}
                   item={item}
@@ -140,7 +145,17 @@ export default function Queue() {
         </section>
       )}
 
-      {selected && <Drawer item={selected} onClose={() => setSelected(null)} />}
+      {selected && isFailureRow(selected) ? (
+        <FailureInspector
+          project={selected.project}
+          kind={selected.kind}
+          number={selected.number}
+          title={selected.title}
+          onClose={() => setSelected(null)}
+        />
+      ) : selected ? (
+        <BasicDrawer item={selected} onClose={() => setSelected(null)} />
+      ) : null}
     </div>
   );
 }
