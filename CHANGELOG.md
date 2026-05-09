@@ -16,6 +16,9 @@ screen), 4.1 (loop selector + version badge) and various reliability
 panels are landed or in flight. v0.3.0 will cut after the migration
 completes.
 
+### Changed
+- [LM-115] Phase 2 · API client, transforms, fixture mode (#151)
+
 ## [0.2.1] - 2026-05-09
 
 A two-week features-and-foundations batch. New dashboard surfaces
