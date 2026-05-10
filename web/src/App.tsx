@@ -4,6 +4,7 @@ import Logo from './components/Logo';
 import TopBar from './components/TopBar';
 import NavRail from './components/NavRail';
 import Overview from './screens/Overview';
+import Logs from './screens/Logs';
 import { fetchActive, fetchHealth } from './lib/api';
 
 const SCREEN_KEYS: Record<string, string> = {
@@ -11,6 +12,7 @@ const SCREEN_KEYS: Record<string, string> = {
   '2': 'queue',
   '3': 'projects',
   '4': 'workers',
+  '5': 'logs',
 };
 
 export default function App() {
@@ -52,6 +54,7 @@ export default function App() {
       <NavRail screen={screen} setScreen={setScreen} />
       <main className="main">
         {screen === 'overview' && <Overview />}
+        {screen === 'logs' && <Logs />}
       </main>
     </div>
   );

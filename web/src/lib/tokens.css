@@ -27,6 +27,7 @@
   --fail:      oklch(0.68 0.20 25);
   --warn:      oklch(0.82 0.16 80);
   --info:      oklch(0.74 0.14 235);
+  --role-err:  oklch(0.68 0.20 25);
 
   /* Role tints — constant lightness ~0.74, chroma ~0.13 */
   --role-po:        oklch(0.74 0.16 295);  /* violet */
