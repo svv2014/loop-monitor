@@ -7,11 +7,13 @@ MONITOR_VERSION = _version_file.read_text().strip() if _version_file.exists() el
 PROJECTS = {
     'ppl':               'svv2014/ppl-study',
     'boba-event':        'svv2014/boba-event',
-    'loop':             'svv2014/loop',
-    'bounty':            'svv2014/loop-monitor',
+    'loop':              'svv2014/loop',
+    'loop-monitor':      'svv2014/loop-monitor',     # was 'bounty'
     'vrefm-classifier':  'svv2014/vrefm-classifier',
     'pa-scanner':        'svv2014/pa-scanner',
     'ntc':               'svv2014/NanoTraderCopilot',
+    'boba-orchestrator': 'svv2014/boba-orchestrator',
+    'suprun':            'svv2014/suprun.ca',
 }
 
 HANDLER_TIMEOUT = 30
