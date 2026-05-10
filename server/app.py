@@ -24,6 +24,7 @@ from server.routes import (  # noqa: E402
     graph,
     health,
     ingest,
+    issues_cost,
     logs,
     runs,
     scanner_state,
@@ -39,6 +40,7 @@ app.include_router(stats.router)
 app.include_router(graph.router)
 app.include_router(action_queue.router)
 app.include_router(claude_usage.router)
+app.include_router(issues_cost.router)
 app.include_router(logs.router)
 app.include_router(scanner_state.router)
 
