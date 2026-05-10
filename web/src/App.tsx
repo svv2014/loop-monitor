@@ -7,6 +7,7 @@ import Overview from './screens/Overview';
 import Logs from './screens/Logs';
 import ProjectDetail from './screens/ProjectDetail';
 import Queue from './screens/Queue';
+import WorkerDetail from './screens/WorkerDetail';
 import { useHashRoute } from './router';
 import { fetchActive, fetchHealth } from './lib/api';
 
@@ -116,6 +117,8 @@ export default function App() {
           <Overview />
         ) : navScreen === 'queue' ? (
           <Queue />
+        ) : navScreen === 'workers' ? (
+          <WorkerDetail />
         ) : navScreen === 'logs' ? (
           <Logs />
         ) : (
