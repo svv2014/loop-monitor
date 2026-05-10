@@ -6,14 +6,13 @@ Run: pytest tests/visual/ -v
 from io import BytesIO
 from pathlib import Path
 
+import numpy as np
 import pytest
+from PIL import Image, ImageChops
 
 pytest.importorskip("playwright", reason="playwright not installed — skipping visual tests")
 
-from PIL import Image, ImageChops  # noqa: E402 (after importorskip guard)
-import numpy as np  # noqa: E402
-
-from tests.visual.conftest import FREEZE_AND_MASK_JS  # noqa: E402
+from .conftest import FREEZE_AND_MASK_JS  # noqa: E402
 
 REPO_ROOT = Path(__file__).parents[2]
 REFERENCE_DIR = REPO_ROOT / "design" / "reference-screenshots"
@@ -45,16 +44,20 @@ def _pixel_diff_ratio(ref: Image.Image, current: Image.Image) -> tuple[float, Im
 def test_screen_visual(page, screen: str, key: str) -> None:
     ref_path = REFERENCE_DIR / f"{screen}.png"
     if not ref_path.exists():
-        pytest.skip(f"Reference screenshot missing: {ref_path}. Run: python tests/visual/capture_references.py")
+        pytest.skip(
+            f"Reference screenshot missing: {ref_path}. "
+            "Run: python tests/visual/capture_references.py"
+        )
 
     prototype_url = PROTOTYPE_PATH.as_uri()
     page.goto(prototype_url, wait_until="networkidle", timeout=60_000)
+    # Freeze immediately after mount — before the live event simulator fires (2 000 ms
+    # interval). This mirrors capture_references.py so reference ≈ test render.
     page.wait_for_timeout(1200)
+    page.evaluate(FREEZE_AND_MASK_JS)
 
     page.keyboard.press(key)
-    page.wait_for_timeout(600)
-    page.evaluate(FREEZE_AND_MASK_JS)
-    page.wait_for_timeout(100)
+    page.wait_for_timeout(300)
 
     screenshot_bytes = page.screenshot(
         clip={"x": 0, "y": 0, "width": 1440, "height": 900},

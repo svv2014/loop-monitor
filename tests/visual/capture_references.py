@@ -70,7 +70,10 @@ def capture(out_dir: Path = REFERENCE_DIR) -> None:
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
-        print("ERROR: playwright is not installed. Run: pip install playwright && playwright install chromium", file=sys.stderr)
+        print(
+            "ERROR: playwright is not installed. Run: pip install playwright && playwright install chromium",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     if not PROTOTYPE_PATH.exists():
@@ -90,19 +93,20 @@ def capture(out_dir: Path = REFERENCE_DIR) -> None:
         print(f"Loading prototype: {prototype_url}")
         # Use networkidle so CDN scripts (React/Babel) fully load
         page.goto(prototype_url, wait_until="networkidle", timeout=60_000)
-        # Extra settle time for React to render
+        # Wait for React to mount; the live event simulator fires every 2 000 ms so
+        # 1 200 ms is safely before the first event — freeze immediately after to get
+        # a deterministic initial state for every screen.
         page.wait_for_timeout(1200)
+        page.evaluate(FREEZE_AND_MASK_JS)
 
-        for stem, key, settle_ms in SCREENS:
+        for stem, key, _ in SCREENS:
             print(f"  Capturing {stem}.png …", end=" ", flush=True)
-            # Navigate to the target screen via keyboard shortcut
+            # Navigate to the target screen via keyboard shortcut (timers already frozen)
             page.keyboard.press(key)
-            page.wait_for_timeout(settle_ms)
-            # Freeze timers and mask dynamic regions
-            page.evaluate(FREEZE_AND_MASK_JS)
-            page.wait_for_timeout(100)
+            page.wait_for_timeout(300)
             out_path = out_dir / f"{stem}.png"
-            page.screenshot(path=str(out_path), clip={"x": 0, "y": 0, "width": VIEWPORT["width"], "height": VIEWPORT["height"]})
+            clip = {"x": 0, "y": 0, "width": VIEWPORT["width"], "height": VIEWPORT["height"]}
+            page.screenshot(path=str(out_path), clip=clip)
             print(f"saved → {out_path.relative_to(REPO_ROOT)}")
 
         context.close()

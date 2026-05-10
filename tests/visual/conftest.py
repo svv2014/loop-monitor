@@ -1,12 +1,6 @@
-pytest_plugins = []
-
-try:
-    import playwright  # noqa: F401
-    _PLAYWRIGHT_AVAILABLE = True
-except ImportError:
-    _PLAYWRIGHT_AVAILABLE = False
-
 import pytest
+
+pytest_plugins = []
 
 VIEWPORT = {"width": 1440, "height": 900}
 
