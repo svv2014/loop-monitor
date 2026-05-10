@@ -1,12 +1,32 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Logo from './components/Logo';
 import TopBar from './components/TopBar';
 import NavRail from './components/NavRail';
+import WorkerDetail from './screens/WorkerDetail';
 import { fetchActive, fetchHealth } from './lib/api';
 
+type Screen = 'overview' | 'queue' | 'projects' | 'workers';
+
+const KEYMAP: Record<string, Screen> = {
+  '1': 'overview',
+  '2': 'queue',
+  '3': 'projects',
+  '4': 'workers',
+};
+
 export default function App() {
-  const [screen, setScreen] = useState('overview');
+  const [screen, setScreen] = useState<Screen>('overview');
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      const next = KEYMAP[e.key];
+      if (next) setScreen(next);
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   const activeQuery = useQuery({
     queryKey: ['active'],
@@ -31,8 +51,12 @@ export default function App() {
     <div className="app">
       <Logo />
       <TopBar events={events} online={online} version={version} />
-      <NavRail screen={screen} setScreen={setScreen} />
-      <main className="main"></main>
+      <NavRail screen={screen} setScreen={s => setScreen(s as Screen)} />
+      <main className="main">
+        {screen === 'workers' && (
+          <WorkerDetail setScreen={s => setScreen(s as Screen)} />
+        )}
+      </main>
     </div>
   );
 }
