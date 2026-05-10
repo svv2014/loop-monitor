@@ -18,6 +18,7 @@ import type {
   StatsStage,
   StatsRework,
   ClaudeUsage,
+  ScannerState,
 } from './types';
 import * as fx from './fixtures';
 
@@ -122,4 +123,9 @@ export async function fetchStatsRework(): Promise<StatsRework[]> {
 export async function fetchClaudeUsage(): Promise<ClaudeUsage> {
   if (isFixtureMode()) return fx.getFixtureClaudeUsage();
   return get<ClaudeUsage>('/api/claude_usage');
+}
+
+export async function fetchScannerState(): Promise<ScannerState> {
+  if (isFixtureMode()) return fx.getFixtureScannerState();
+  return get<ScannerState>('/api/scanner_state');
 }

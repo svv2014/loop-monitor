@@ -18,6 +18,7 @@ import type {
   StatsRework,
   Verdict,
   ClaudeUsage,
+  ScannerState,
 } from './types';
 
 const PROJECTS = [
@@ -333,4 +334,20 @@ export function getFixtureClaudeUsage(): ClaudeUsage {
 // Full history for use by transforms (same data that would come from /api/history)
 export function getFixtureHistoryAll(): RawEvent[] {
   return HISTORY;
+}
+
+export function getFixtureScannerState(): ScannerState {
+  return {
+    stages: {
+      po:       { in_flight: 1, cap: 4 },
+      dev:      { in_flight: 2, cap: 4 },
+      qa:       { in_flight: 0, cap: 4 },
+      reviewer: { in_flight: 1, cap: 4 },
+      merge:    { in_flight: 0, cap: 2 },
+    },
+    retries: [
+      { project: 'loop-monitor', kind: 'issue', number: 137, stage: 'po',  count: 1, max: 2 },
+      { project: 'loop',         kind: 'issue', number: 142, stage: 'dev', count: 2, max: 2 },
+    ],
+  };
 }
