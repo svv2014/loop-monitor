@@ -24,7 +24,7 @@ uvicorn server:app --host 127.0.0.1 --port 18792 --reload
 ## Code quality
 
 This repo uses [ruff](https://docs.astral.sh/ruff/) for linting/formatting and
-[mypy](https://mypy.readthedocs.io/) for type checking.
+[pyright](https://github.com/microsoft/pyright) for type checking.
 
 **One-time setup** — install the pre-commit hooks so checks run automatically before every commit:
 
@@ -40,13 +40,13 @@ pre-commit install
 ruff check .
 
 # Type check (server only)
-mypy server.py
+pyright server/
 
 # Run all pre-commit hooks against every file
 pre-commit run --all-files
 ```
 
-CI runs `ruff check .` and `mypy server.py` on every PR and push to `main`.
+CI runs `ruff check .` and `pyright server/` on every PR and push to `main`.
 
 Open http://127.0.0.1:18792.
 
