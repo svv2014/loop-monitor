@@ -1,9 +1,17 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Logo from './components/Logo';
 import TopBar from './components/TopBar';
 import NavRail from './components/NavRail';
+import Overview from './screens/Overview';
 import { fetchActive, fetchHealth } from './lib/api';
+
+const SCREEN_KEYS: Record<string, string> = {
+  '1': 'overview',
+  '2': 'queue',
+  '3': 'projects',
+  '4': 'workers',
+};
 
 export default function App() {
   const [screen, setScreen] = useState('overview');
@@ -21,6 +29,16 @@ export default function App() {
     staleTime: 60_000,
   });
 
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      const next = SCREEN_KEYS[e.key];
+      if (next) setScreen(next);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   const events = (activeQuery.data ?? []).map((w) => ({
     ts: new Date(w.created_at).getTime(),
   }));
@@ -32,7 +50,9 @@ export default function App() {
       <Logo />
       <TopBar events={events} online={online} version={version} />
       <NavRail screen={screen} setScreen={setScreen} />
-      <main className="main"></main>
+      <main className="main">
+        {screen === 'overview' && <Overview />}
+      </main>
     </div>
   );
 }

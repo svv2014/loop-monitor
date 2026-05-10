@@ -492,6 +492,33 @@ table.t tr:hover td { background: oklch(1 0 0 / 0.02); }
 }
 .ticker .item { display: inline-flex; gap: 6px; align-items: center; }
 
+/* Claude Usage quota bar */
+.usage-bar {
+  width: 100%;
+  height: 6px;
+  background: var(--bg-3);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: var(--pad-1);
+}
+.usage-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+.usage-fill.usage-warn { background: var(--warn); }
+.usage-fill.usage-critical { background: var(--fail); }
+
+/* Charts panel grid */
+.charts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--hairline);
+  background: var(--border);
+}
+.charts-grid > .panel { background: var(--bg-1); }
+
 /* Section heading row separating screens */
 .screen-h {
   display: flex;

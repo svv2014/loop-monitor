@@ -157,3 +157,14 @@ export interface StatsRework {
   rework_starts: number;
   review_dones: number;
 }
+
+export interface ClaudeUsage {
+  enabled: boolean;
+  quota_used?: number | null;
+  quota_limit?: number | null;
+  quota_pct?: number | null;
+  reset_at?: string | null;
+  cache_hit_pct?: number | null;
+  refresh_seconds?: number | null;
+  error?: string | null;
+}
