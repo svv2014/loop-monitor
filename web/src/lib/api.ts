@@ -19,6 +19,7 @@ import type {
   StatsRework,
   ClaudeUsage,
   ScannerState,
+  LogsResponse,
 } from './types';
 import * as fx from './fixtures';
 
@@ -128,4 +129,20 @@ export async function fetchClaudeUsage(): Promise<ClaudeUsage> {
 export async function fetchScannerState(): Promise<ScannerState> {
   if (isFixtureMode()) return fx.getFixtureScannerState();
   return get<ScannerState>('/api/scanner_state');
+}
+
+export class LogsDisabledError extends Error {
+  constructor() { super('Logs are disabled. Set LOOPMON_EXPOSE_LOGS=1 or access via loopback.'); }
+}
+
+export async function fetchLogs(handler: string, filter: string, tail: string): Promise<LogsResponse> {
+  const params = new URLSearchParams({ handler, tail });
+  if (filter) params.set('filter', filter);
+  const res = await fetch(`/api/logs?${params.toString()}`);
+  if (res.status === 403) throw new LogsDisabledError();
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { detail?: string }).detail || res.statusText);
+  }
+  return res.json() as Promise<LogsResponse>;
 }

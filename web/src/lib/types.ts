@@ -187,3 +187,18 @@ export interface ScannerState {
   stages: Record<string, StageInfo>;
   retries: RetryRow[];
 }
+
+export interface LogLine {
+  ts?: string;
+  handler?: string;
+  msg?: string;
+  raw?: string;
+}
+
+export interface LogsResponse {
+  path: string;
+  on_disk_bytes: number;
+  fd_bytes: number | null;
+  orphaned: boolean;
+  lines: LogLine[];
+}
