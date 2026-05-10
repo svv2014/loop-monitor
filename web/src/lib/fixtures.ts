@@ -17,6 +17,7 @@ import type {
   StatsStage,
   StatsRework,
   Verdict,
+  ClaudeUsage,
 } from './types';
 
 const PROJECTS = [
@@ -314,6 +315,19 @@ export function getFixtureStatsRework(): StatsRework[] {
     rework_starts: randInt(0, 20),
     review_dones: randInt(5, 40),
   }));
+}
+
+export function getFixtureClaudeUsage(): ClaudeUsage {
+  return {
+    enabled: true,
+    quota_used: 1_250_000,
+    quota_limit: 5_000_000,
+    quota_pct: 25,
+    reset_at: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
+    cache_hit_pct: 42.5,
+    refresh_seconds: 300,
+    error: null,
+  };
 }
 
 // Full history for use by transforms (same data that would come from /api/history)
