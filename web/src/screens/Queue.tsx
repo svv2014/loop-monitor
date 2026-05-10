@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { QueueItem } from '../lib/types';
+import Drawer from '../components/Drawer';
+import { useHashRoute } from '../router';
 
 function formatAge(seconds: number): string {
   if (seconds >= 3600) {
@@ -12,33 +14,32 @@ function formatAge(seconds: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-interface DrawerProps {
-  item: QueueItem;
-  onClose: () => void;
+function itemDrawerKey(item: QueueItem): string {
+  return `item:${item.project}:${item.kind}:${item.number}`;
 }
 
-function Drawer({ item, onClose }: DrawerProps) {
+interface DrawerContentProps {
+  item: QueueItem;
+}
+
+function QueueDrawerContent({ item }: DrawerContentProps) {
   return (
-    <div className="drawer-overlay" onClick={onClose}>
-      <div className="drawer" onClick={e => e.stopPropagation()}>
-        <button className="drawer-close" onClick={onClose}>×</button>
-        <h2>{item.title || `${item.kind} #${item.number}`}</h2>
-        <dl>
-          <dt>Project</dt><dd>{item.project}</dd>
-          <dt>Stage</dt><dd>{item.stage}</dd>
-          <dt>Age</dt><dd>{formatAge(item.age_seconds)}</dd>
-          <dt>Reason</dt><dd>{item.reason}</dd>
-          {item.threshold_seconds !== null && (
-            <><dt>Threshold</dt><dd>{formatAge(item.threshold_seconds)}</dd></>
-          )}
-        </dl>
-        {item.github_url && (
+    <dl>
+      <dt>Project</dt><dd>{item.project}</dd>
+      <dt>Stage</dt><dd>{item.stage}</dd>
+      <dt>Age</dt><dd>{formatAge(item.age_seconds)}</dd>
+      <dt>Reason</dt><dd>{item.reason}</dd>
+      {item.threshold_seconds !== null && (
+        <><dt>Threshold</dt><dd>{formatAge(item.threshold_seconds)}</dd></>
+      )}
+      {item.github_url && (
+        <dd>
           <a href={item.github_url} target="_blank" rel="noreferrer">
             View on GitHub
           </a>
-        )}
-      </div>
-    </div>
+        </dd>
+      )}
+    </dl>
   );
 }
 
@@ -61,8 +62,8 @@ function QueueRow({ item, onClick }: RowProps) {
 
 export default function Queue() {
   const [items, setItems] = useState<QueueItem[]>([]);
-  const [selected, setSelected] = useState<QueueItem | null>(null);
   const [loading, setLoading] = useState(true);
+  const { drawer, setHash } = useHashRoute();
 
   useEffect(() => {
     fetch('/api/action_queue')
@@ -73,6 +74,16 @@ export default function Queue() {
       })
       .catch(() => setLoading(false));
   }, []);
+
+  const selected = items.find(i => itemDrawerKey(i) === drawer) ?? null;
+
+  function openDrawer(item: QueueItem) {
+    setHash({ drawer: itemDrawerKey(item) });
+  }
+
+  function closeDrawer() {
+    setHash({ drawer: undefined });
+  }
 
   const stuckItems = items
     .filter(i => i.reason === 'stuck_label' || i.reason === 'timeout')
@@ -106,7 +117,7 @@ export default function Queue() {
                 <QueueRow
                   key={`${item.project}-${item.kind}-${item.number}`}
                   item={item}
-                  onClick={setSelected}
+                  onClick={openDrawer}
                 />
               ))}
             </tbody>
@@ -132,7 +143,7 @@ export default function Queue() {
                 <QueueRow
                   key={`${item.project}-${item.kind}-${item.number}`}
                   item={item}
-                  onClick={setSelected}
+                  onClick={openDrawer}
                 />
               ))}
             </tbody>
@@ -140,7 +151,13 @@ export default function Queue() {
         </section>
       )}
 
-      {selected && <Drawer item={selected} onClose={() => setSelected(null)} />}
+      <Drawer
+        open={selected !== null}
+        onClose={closeDrawer}
+        title={selected ? `${selected.kind} #${selected.number}` : undefined}
+      >
+        {selected && <QueueDrawerContent item={selected} />}
+      </Drawer>
     </div>
   );
 }
