@@ -19,6 +19,7 @@ import type {
   Verdict,
   ClaudeUsage,
   ScannerState,
+  IssueCostRow,
 } from './types';
 
 const PROJECTS = [
@@ -334,6 +335,28 @@ export function getFixtureClaudeUsage(): ClaudeUsage {
 // Full history for use by transforms (same data that would come from /api/history)
 export function getFixtureHistoryAll(): RawEvent[] {
   return HISTORY;
+}
+
+export function getFixtureIssuesCost(): IssueCostRow[] {
+  resetSeed();
+  const PRIORITIES = ['p0-critical', 'p1-high', 'p2-medium', 'p3-low'] as const;
+  const STATES = ['open', 'closed', 'in-progress'] as const;
+  return Array.from({ length: 20 }, (_) => {
+    const p = pick(PROJECTS);
+    const actual_runs = randInt(1, 12);
+    const rework_factor = parseFloat((actual_runs / 5).toFixed(2));
+    return {
+      project: p.id,
+      issue_number: randInt(10, 200),
+      priority: pick(PRIORITIES),
+      state: pick(STATES),
+      rework_factor,
+      total_points: randInt(0, 25),
+      stranded_seconds: rand() > 0.4 ? randInt(0, 72 * 3600) : null,
+      actual_runs,
+      last_event_at: new Date(Date.now() - randInt(60, 7 * 86400) * 1000).toISOString(),
+    };
+  }).sort((a, b) => b.rework_factor - a.rework_factor || b.actual_runs - a.actual_runs);
 }
 
 export function getFixtureScannerState(): ScannerState {

@@ -20,6 +20,7 @@ import type {
   ClaudeUsage,
   ScannerState,
   LogsResponse,
+  IssueCostRow,
 } from './types';
 import * as fx from './fixtures';
 
@@ -129,6 +130,24 @@ export async function fetchClaudeUsage(): Promise<ClaudeUsage> {
 export async function fetchScannerState(): Promise<ScannerState> {
   if (isFixtureMode()) return fx.getFixtureScannerState();
   return get<ScannerState>('/api/scanner_state');
+}
+
+export interface IssuesCostParams {
+  project?: string;
+  since?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export async function fetchIssuesCost(params: IssuesCostParams = {}): Promise<IssueCostRow[]> {
+  if (isFixtureMode()) return fx.getFixtureIssuesCost();
+  const p = new URLSearchParams();
+  if (params.project) p.set('project', params.project);
+  if (params.since)   p.set('since', params.since);
+  if (params.limit != null)  p.set('limit', String(params.limit));
+  if (params.offset != null) p.set('offset', String(params.offset));
+  const qs = p.size ? `?${p.toString()}` : '';
+  return get<IssueCostRow[]>(`/api/issues/cost${qs}`);
 }
 
 export class LogsDisabledError extends Error {

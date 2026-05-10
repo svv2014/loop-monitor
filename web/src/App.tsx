@@ -8,6 +8,7 @@ import Logs from './screens/Logs';
 import ProjectDetail from './screens/ProjectDetail';
 import Queue from './screens/Queue';
 import WorkerDetail from './screens/WorkerDetail';
+import Cost from './screens/Cost';
 import { useHashRoute } from './router';
 import { fetchActive, fetchHealth } from './lib/api';
 
@@ -17,6 +18,7 @@ const SCREEN_KEYS: Record<string, string> = {
   '3': 'projects',
   '4': 'workers',
   '5': 'logs',
+  '6': 'cost',
 };
 
 export default function App() {
@@ -54,7 +56,9 @@ export default function App() {
     setNavScreen(s);
     if (s !== 'projects') {
       setProjectId(null);
-      navigateTo(s as 'overview' | 'queue' | 'projects' | 'workers' | 'project' | 'logs');
+      if (s !== 'cost') {
+        navigateTo(s as 'overview' | 'queue' | 'projects' | 'workers' | 'project' | 'logs');
+      }
     }
   }
 
@@ -121,6 +125,8 @@ export default function App() {
           <WorkerDetail />
         ) : navScreen === 'logs' ? (
           <Logs />
+        ) : navScreen === 'cost' ? (
+          <Cost />
         ) : (
           <div style={{ padding: 'var(--pad-4)' }}>
             <p className="muted mono" style={{ fontSize: 12 }}>

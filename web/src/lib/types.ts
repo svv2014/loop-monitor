@@ -202,3 +202,15 @@ export interface LogsResponse {
   orphaned: boolean;
   lines: LogLine[];
 }
+
+export interface IssueCostRow {
+  project: string;
+  issue_number: number;
+  priority: string;
+  state: string;
+  rework_factor: number;
+  total_points: number;
+  stranded_seconds: number | null;
+  actual_runs: number;
+  last_event_at: string | null;
+}
