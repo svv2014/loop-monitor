@@ -153,3 +153,12 @@ def get_db():
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=10000")
     return conn
+
+
+def db_dep():
+    """FastAPI dependency — opens, yields, closes in finally."""
+    conn = get_db()
+    try:
+        yield conn
+    finally:
+        conn.close()
