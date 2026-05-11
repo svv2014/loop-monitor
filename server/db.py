@@ -103,13 +103,13 @@ def _migration_already_applied(conn: sqlite3.Connection, version_id: str) -> boo
 
 def apply_pending_migrations():
     conn = sqlite3.connect(DB_PATH)
+    conn.isolation_level = None  # manual transaction control — required so DDL stays in our transaction
     conn.execute("""
         CREATE TABLE IF NOT EXISTS schema_migrations (
             version_id TEXT PRIMARY KEY,
             applied_at TEXT
         )
     """)
-    conn.commit()
 
     now = datetime.now(timezone.utc).isoformat()
     applied = {r[0] for r in conn.execute("SELECT version_id FROM schema_migrations")}
@@ -118,20 +118,29 @@ def apply_pending_migrations():
         if version_id in applied:
             continue
         if _migration_already_applied(conn, version_id):
+            conn.execute("BEGIN IMMEDIATE")
             conn.execute(
                 "INSERT INTO schema_migrations (version_id, applied_at) VALUES (?, ?)",
                 (version_id, now),
             )
-            conn.commit()
+            conn.execute("COMMIT")
             continue
+        # Statement splitting: existing MIGRATIONS contain no ';' inside string literals.
+        statements = [s.strip() for s in sql.split(";") if s.strip()]
         try:
-            conn.executescript(sql)
+            conn.execute("BEGIN IMMEDIATE")
+            for stmt in statements:
+                conn.execute(stmt)
             conn.execute(
                 "INSERT INTO schema_migrations (version_id, applied_at) VALUES (?, ?)",
                 (version_id, now),
             )
-            conn.commit()
+            conn.execute("COMMIT")
         except Exception:
+            try:
+                conn.execute("ROLLBACK")
+            except sqlite3.OperationalError:
+                pass
             print(f"Migration failed: {version_id}\nSQL:\n{sql}")
             raise
 
