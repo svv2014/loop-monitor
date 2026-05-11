@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  loop-watch — temporary observability for the Loop pipeline.
+  Install:  cp scripts/com.user.loop-watch.plist ~/Library/LaunchAgents/
+            launchctl load ~/Library/LaunchAgents/com.user.loop-watch.plist
+  Disable:  launchctl unload ~/Library/LaunchAgents/com.user.loop-watch.plist
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.user.loop-watch</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/vadim/.openclaw/workspace/projects/loop-monitor/scripts/loop-watch.sh</string>
+    </array>
+
+    <key>StartInterval</key>
+    <integer>7200</integer>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/loop-watch.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/loop-watch.err.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>LOOP_MONITOR_URL</key>
+        <string>http://localhost:18792</string>
+        <key>LOOP_WATCH_REPO</key>
+        <string>svv2014/loop</string>
+    </dict>
+</dict>
+</plist>
