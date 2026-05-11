@@ -15,8 +15,10 @@ jobs:
         with:
           python-version-file: pyproject.toml
 
-      - name: Install linting tools
-        run: pip install ruff pyright
+      - name: Install project + linting tools
+        run: |
+          pip install -r requirements.txt
+          pip install ruff pyright
 
       - name: ruff check
         run: ruff check .
