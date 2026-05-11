@@ -203,6 +203,16 @@ export interface LogsResponse {
   lines: LogLine[];
 }
 
+export interface FailureContext {
+  excerpt: string | null;
+  model: string | null;
+  run_id: string | null;
+  retry_count: number;
+  timestamp: string | null;
+  github_comment_url: string | null;
+  log_path: string | null;
+}
+
 export interface IssueCostRow {
   project: string;
   issue_number: number;

@@ -3,10 +3,11 @@ import sqlite3
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from server.constants import PROJECTS
 from server.db import db_dep
+from server.helpers.github import fetch_failure_context
 from server.helpers.timeline import parse_ts
 
 router = APIRouter()
@@ -138,3 +139,27 @@ def action_queue(conn: sqlite3.Connection = Depends(db_dep)):
         })
     result.sort(key=lambda x: x["age_seconds"], reverse=True)
     return result
+
+
+@router.get("/api/action_queue/{project}/{kind}/{number}/failure")
+def action_queue_failure(project: str, kind: str, number: int):
+    """Most-recent failure-context comment for a ticket.
+
+    Returns 200 with excerpt=null when no failure comment exists.
+    Returns 400 for invalid kind values.
+    """
+    if kind not in ("issue", "pr"):
+        raise HTTPException(status_code=400, detail="kind must be 'issue' or 'pr'")
+    repo = PROJECTS.get(project)
+    if repo is None:
+        return {
+            "excerpt": None,
+            "model": None,
+            "run_id": None,
+            "retry_count": 0,
+            "timestamp": None,
+            "github_comment_url": None,
+            "log_path": None,
+        }
+    cache_key = (project, kind, number)
+    return fetch_failure_context(repo=repo, kind=kind, number=number, project=project, cache_key=cache_key)

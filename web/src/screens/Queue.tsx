@@ -2,6 +2,11 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchActionQueue } from '../lib/api';
 import type { QueueItem } from '../lib/types';
+import FailureInspector from '../components/FailureInspector';
+
+function isFailureItem(item: QueueItem): boolean {
+  return item.stage === 'needs-clarification' || item.reason === 'qa_fail_repeated';
+}
 
 export type SortCol = 'project' | 'item' | 'stage' | 'age_seconds' | 'reason';
 export type SortDir = 'asc' | 'desc';
@@ -288,7 +293,18 @@ export default function Queue() {
         )}
       </section>
 
-      {selected && <InlineDrawer item={selected} onClose={() => setSelected(null)} />}
+      {selected && isFailureItem(selected) ? (
+        <FailureInspector
+          project={selected.project}
+          kind={selected.kind}
+          number={selected.number}
+          title={selected.title}
+          githubUrl={selected.github_url}
+          onClose={() => setSelected(null)}
+        />
+      ) : selected ? (
+        <InlineDrawer item={selected} onClose={() => setSelected(null)} />
+      ) : null}
     </div>
   );
 }
