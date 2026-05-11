@@ -18,6 +18,7 @@ completes.
 
 ### Changed
 - [LM-115] Phase 2 · API client, transforms, fixture mode (#151)
+- [LM-126] fix db connection leak — add db_dep() FastAPI dependency + try/finally for bg tasks (#189)
 
 ## [0.2.1] - 2026-05-09
 
