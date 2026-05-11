@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchIssuesCost } from '../lib/api';
 import type { IssueCostRow } from '../lib/types';
+import TokenSpend from '../panels/TokenSpend';
 
 const LIMIT = 50;
 
@@ -79,6 +80,7 @@ export default function Cost() {
 
   return (
     <div>
+      <TokenSpend />
       <div className="screen-h">
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--pad-3)' }}>
           <h1>Cost</h1>

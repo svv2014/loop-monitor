@@ -20,6 +20,7 @@ import type {
   ClaudeUsage,
   ScannerState,
   IssueCostRow,
+  TokenSpend,
 } from './types';
 
 const PROJECTS = [
@@ -357,6 +358,67 @@ export function getFixtureIssuesCost(): IssueCostRow[] {
       last_event_at: new Date(Date.now() - randInt(60, 7 * 86400) * 1000).toISOString(),
     };
   }).sort((a, b) => b.rework_factor - a.rework_factor || b.actual_runs - a.actual_runs);
+}
+
+export function getFixtureTokenSpend(): TokenSpend {
+  resetSeed();
+  const COST_1M_IN = 3.0;
+  const COST_1M_OUT = 15.0;
+  const IN_PER_EV = 50_000;
+  const OUT_PER_EV = 10_000;
+  const now = Date.now();
+  const roleList = ['po', 'dev', 'qa', 'reviewer', 'merge', 'judge'] as const;
+
+  function estCost(ev: number): number {
+    return parseFloat(((ev * IN_PER_EV / 1_000_000) * COST_1M_IN + (ev * OUT_PER_EV / 1_000_000) * COST_1M_OUT).toFixed(4));
+  }
+
+  const chart = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(now - (6 - i) * 86_400_000);
+    const date = d.toISOString().slice(0, 10);
+    const label = `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
+    const entry: TokenSpend['chart'][number] = { date, label, po: 0, dev: 0, qa: 0, reviewer: 0, merge: 0, judge: 0 };
+    for (const role of roleList) {
+      const ev = randInt(0, 8);
+      entry[role] = estCost(ev);
+      entry[`${role}_events`] = ev;
+      entry[`${role}_input_tokens`] = ev * IN_PER_EV;
+      entry[`${role}_output_tokens`] = ev * OUT_PER_EV;
+    }
+    return entry;
+  });
+
+  const projects = PROJECTS.slice(0, 5).map((p) => {
+    const me = randInt(5, 60);
+    const we = randInt(1, Math.min(me, 20));
+    const te = randInt(0, Math.min(we, 5));
+    return {
+      project: p.id,
+      today_events: te,
+      week_events: we,
+      month_events: me,
+      today_input_tokens: te * IN_PER_EV,
+      today_output_tokens: te * OUT_PER_EV,
+      week_input_tokens: we * IN_PER_EV,
+      week_output_tokens: we * OUT_PER_EV,
+      month_input_tokens: me * IN_PER_EV,
+      month_output_tokens: me * OUT_PER_EV,
+      today_cost_usd: estCost(te),
+      week_cost_usd: estCost(we),
+      month_cost_usd: estCost(me),
+    };
+  });
+
+  return {
+    chart,
+    projects,
+    config: {
+      cost_per_1m_input: COST_1M_IN,
+      cost_per_1m_output: COST_1M_OUT,
+      est_input_per_event: IN_PER_EV,
+      est_output_per_event: OUT_PER_EV,
+    },
+  };
 }
 
 export function getFixtureScannerState(): ScannerState {

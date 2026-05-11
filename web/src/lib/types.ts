@@ -203,6 +203,54 @@ export interface LogsResponse {
   lines: LogLine[];
 }
 
+export interface TokenSpendDayRole {
+  events: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+}
+
+export interface TokenSpendChartEntry {
+  date: string;
+  label: string;
+  po: number;
+  dev: number;
+  qa: number;
+  reviewer: number;
+  merge: number;
+  judge: number;
+  [key: string]: string | number;
+}
+
+export interface TokenSpendProject {
+  project: string;
+  today_events: number;
+  week_events: number;
+  month_events: number;
+  today_input_tokens: number;
+  today_output_tokens: number;
+  week_input_tokens: number;
+  week_output_tokens: number;
+  month_input_tokens: number;
+  month_output_tokens: number;
+  today_cost_usd: number;
+  week_cost_usd: number;
+  month_cost_usd: number;
+}
+
+export interface TokenSpendConfig {
+  cost_per_1m_input: number;
+  cost_per_1m_output: number;
+  est_input_per_event: number;
+  est_output_per_event: number;
+}
+
+export interface TokenSpend {
+  chart: TokenSpendChartEntry[];
+  projects: TokenSpendProject[];
+  config: TokenSpendConfig;
+}
+
 export interface IssueCostRow {
   project: string;
   issue_number: number;

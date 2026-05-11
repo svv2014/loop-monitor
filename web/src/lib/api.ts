@@ -21,6 +21,7 @@ import type {
   ScannerState,
   LogsResponse,
   IssueCostRow,
+  TokenSpend,
 } from './types';
 import * as fx from './fixtures';
 
@@ -148,6 +149,11 @@ export async function fetchIssuesCost(params: IssuesCostParams = {}): Promise<Is
   if (params.offset != null) p.set('offset', String(params.offset));
   const qs = p.size ? `?${p.toString()}` : '';
   return get<IssueCostRow[]>(`/api/issues/cost${qs}`);
+}
+
+export async function fetchTokenSpend(): Promise<TokenSpend> {
+  if (isFixtureMode()) return fx.getFixtureTokenSpend();
+  return get<TokenSpend>('/api/token_spend');
 }
 
 export class LogsDisabledError extends Error {
