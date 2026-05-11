@@ -20,6 +20,7 @@ import type {
   ClaudeUsage,
   ScannerState,
   IssueCostRow,
+  PipelineHealth,
 } from './types';
 
 const PROJECTS = [
@@ -357,6 +358,29 @@ export function getFixtureIssuesCost(): IssueCostRow[] {
       last_event_at: new Date(Date.now() - randInt(60, 7 * 86400) * 1000).toISOString(),
     };
   }).sort((a, b) => b.rework_factor - a.rework_factor || b.actual_runs - a.actual_runs);
+}
+
+export function getFixturePipelineHealth(): PipelineHealth {
+  return {
+    scanner: {
+      status: 'ok',
+      last_tick_iso: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+      interval_seconds: 1800,
+      detail: 'Scanner running normally',
+    },
+    orchestrator: {
+      status: 'stale',
+      last_tick_iso: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
+      interval_seconds: 900,
+      detail: 'Last tick was 40m ago (threshold: 30m)',
+    },
+    event_queue: {
+      status: 'ok',
+      last_tick_iso: new Date(Date.now() - 30 * 1000).toISOString(),
+      interval_seconds: 60,
+      detail: 'queue_depth=3',
+    },
+  };
 }
 
 export function getFixtureScannerState(): ScannerState {

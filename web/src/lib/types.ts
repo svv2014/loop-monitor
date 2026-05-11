@@ -214,3 +214,16 @@ export interface IssueCostRow {
   actual_runs: number;
   last_event_at: string | null;
 }
+
+export interface SubsystemHealth {
+  status: 'ok' | 'stale' | 'down';
+  last_tick_iso: string | null;
+  interval_seconds: number | null;
+  detail: string;
+}
+
+export interface PipelineHealth {
+  scanner: SubsystemHealth;
+  orchestrator: SubsystemHealth;
+  event_queue: SubsystemHealth;
+}
