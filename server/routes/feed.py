@@ -1,18 +1,18 @@
 import json
+import sqlite3
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
-from server.db import get_db
+from server.db import db_dep
 
 router = APIRouter()
 
 
 @router.get("/api/history")
-def history(limit: int = 50, loop_id: Optional[str] = None):
+def history(conn: sqlite3.Connection = Depends(db_dep), limit: int = 50, loop_id: Optional[str] = None):
     """Completed jobs: *_done/*_pass events paired with their *_start for duration."""
-    conn = get_db()
     loop_clause = "AND d.loop_id = ?" if loop_id is not None else ""
     params = (loop_id, limit) if loop_id is not None else (limit,)
     rows = conn.execute(f"""
@@ -50,14 +50,12 @@ def history(limit: int = 50, loop_id: Optional[str] = None):
         ORDER BY d.id DESC
         LIMIT ?
     """, params).fetchall()
-    conn.close()
     return [dict(r) for r in rows]
 
 
 @router.get("/api/active")
-def active():
+def active(conn: sqlite3.Connection = Depends(db_dep)):
     """Currently running workers: latest event per project+role is a *_start within last 4h."""
-    conn = get_db()
     rows = conn.execute("""
         SELECT e.project, e.role, e.model, e.event_type, e.issue_number, e.pr_number,
                e.detail, e.created_at
@@ -69,7 +67,6 @@ def active():
           AND e.created_at >= datetime('now', '-4 hours')
         ORDER BY e.created_at DESC
     """).fetchall()
-    conn.close()
     return [dict(r) for r in rows]
 
 
@@ -88,7 +85,12 @@ def _derive_status(event_type: str) -> str:
 
 
 @router.get("/api/feed")
-def feed(role: Optional[str] = None, status: Optional[str] = None, loop_id: Optional[str] = None):
+def feed(
+    conn: sqlite3.Connection = Depends(db_dep),
+    role: Optional[str] = None,
+    status: Optional[str] = None,
+    loop_id: Optional[str] = None,
+):
     status_lower = status.lower() if status else None
     if status_lower is not None and status_lower not in VALID_FEED_STATUSES:
         return []
@@ -111,14 +113,12 @@ def feed(role: Optional[str] = None, status: Optional[str] = None, loop_id: Opti
 
     where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
-    conn = get_db()
     rows = conn.execute(
         f"""SELECT id, project, role, model, event_type, issue_number, pr_number,
                   detail, payload, created_at
            FROM events {where_sql} ORDER BY id DESC LIMIT 50""",
         params,
     ).fetchall()
-    conn.close()
     now = datetime.now(timezone.utc)
     result = []
     for r in rows:
@@ -138,8 +138,7 @@ def feed(role: Optional[str] = None, status: Optional[str] = None, loop_id: Opti
 
 
 @router.get("/api/status")
-def status():
-    conn = get_db()
+def status(conn: sqlite3.Connection = Depends(db_dep)):
     rows = conn.execute("""
         SELECT e.project, e.role, e.model, e.event_type, e.issue_number, e.pr_number,
                e.detail, e.payload, e.created_at
@@ -149,7 +148,6 @@ def status():
         ) latest ON e.id = latest.max_id
         ORDER BY e.project, e.role
     """).fetchall()
-    conn.close()
     result = []
     for r in rows:
         entry = dict(r)

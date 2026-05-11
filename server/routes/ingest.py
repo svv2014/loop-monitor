@@ -26,108 +26,111 @@ def _insert_event(data: ReportPayload):
 
 def _do_insert_event(data: ReportPayload):
     conn = get_db()
-    now = datetime.now(timezone.utc).isoformat()
-    conn.execute(
-        """INSERT INTO events
-           (project, role, model, event_type, issue_number, pr_number, detail, payload,
-            core_version, loop_id, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            data.project,
-            data.role,
-            data.model,
-            data.event_type,
-            data.issue_number,
-            data.pr_number,
-            data.detail,
-            json.dumps(data.payload) if data.payload else None,
-            data.core_version,
-            data.loop_id,
-            now,
-        ),
-    )
-
-    if data.issue_number is not None:
+    try:
+        now = datetime.now(timezone.utc).isoformat()
         conn.execute(
-            """INSERT INTO issue_history
-               (project, issue_number, pr_number, role, event_type, agent, model,
-                duration_seconds, rework_count, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO events
+               (project, role, model, event_type, issue_number, pr_number, detail, payload,
+                core_version, loop_id, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 data.project,
+                data.role,
+                data.model,
+                data.event_type,
                 data.issue_number,
                 data.pr_number,
-                data.role,
-                data.event_type,
-                data.agent,
-                data.model,
-                data.duration_seconds,
-                data.rework_count or 0,
+                data.detail,
+                json.dumps(data.payload) if data.payload else None,
+                data.core_version,
+                data.loop_id,
                 now,
             ),
         )
 
-        existing_run = conn.execute(
-            "SELECT id, rework_count FROM pipeline_runs WHERE project=? AND issue_number=?",
-            (data.project, data.issue_number),
-        ).fetchone()
-
-        if existing_run:
-            updates = ["completed_at=?"]
-            params: list = [now]
-            if data.pr_number is not None:
-                updates.append("pr_number=?")
-                params.append(data.pr_number)
-            if data.rework_count is not None:
-                updates.append("rework_count=rework_count+?")
-                params.append(data.rework_count)
-            params.append(existing_run["id"])
+        if data.issue_number is not None:
             conn.execute(
-                f"UPDATE pipeline_runs SET {', '.join(updates)} WHERE id=?",
-                params,
-            )
-        else:
-            conn.execute(
-                """INSERT INTO pipeline_runs
-                   (project, issue_number, pr_number, started_at, completed_at, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (data.project, data.issue_number, data.pr_number, now, now, now),
+                """INSERT INTO issue_history
+                   (project, issue_number, pr_number, role, event_type, agent, model,
+                    duration_seconds, rework_count, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    data.project,
+                    data.issue_number,
+                    data.pr_number,
+                    data.role,
+                    data.event_type,
+                    data.agent,
+                    data.model,
+                    data.duration_seconds,
+                    data.rework_count or 0,
+                    now,
+                ),
             )
 
-    if data.event_type == "finished" and data.issue_number is not None:
-        now_dt = datetime.fromisoformat(now)
-        run = conn.execute(
-            "SELECT id, started_at FROM pipeline_runs WHERE project=? AND issue_number=? ORDER BY id DESC LIMIT 1",
-            (data.project, data.issue_number),
-        ).fetchone()
-        if run:
-            try:
-                started = datetime.fromisoformat(run["started_at"].replace("Z", "+00:00"))
-                issue_secs = int((now_dt - started).total_seconds())
-            except Exception:
-                issue_secs = None
-            first_pr = conn.execute(
-                "SELECT created_at FROM issue_history"
-                " WHERE project=? AND issue_number=? AND pr_number IS NOT NULL"
-                " ORDER BY id ASC LIMIT 1",
+            existing_run = conn.execute(
+                "SELECT id, rework_count FROM pipeline_runs WHERE project=? AND issue_number=?",
                 (data.project, data.issue_number),
             ).fetchone()
-            pr_secs = None
-            if first_pr:
-                try:
-                    pr_start = datetime.fromisoformat(first_pr["created_at"].replace("Z", "+00:00"))
-                    pr_secs = int((now_dt - pr_start).total_seconds())
-                except Exception:
-                    pass
-            conn.execute(
-                """UPDATE pipeline_runs SET outcome=?, completed_at=?, issue_lifetime_seconds=?, pr_lifetime_seconds=?
-                   WHERE id=?""",
-                (data.detail or "finished", now, issue_secs, pr_secs, run["id"]),
-            )
 
-    auto_bounty(conn, data, now)
-    conn.commit()
-    conn.close()
+            if existing_run:
+                updates = ["completed_at=?"]
+                params: list = [now]
+                if data.pr_number is not None:
+                    updates.append("pr_number=?")
+                    params.append(data.pr_number)
+                if data.rework_count is not None:
+                    updates.append("rework_count=rework_count+?")
+                    params.append(data.rework_count)
+                params.append(existing_run["id"])
+                conn.execute(
+                    f"UPDATE pipeline_runs SET {', '.join(updates)} WHERE id=?",
+                    params,
+                )
+            else:
+                conn.execute(
+                    """INSERT INTO pipeline_runs
+                       (project, issue_number, pr_number, started_at, completed_at, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (data.project, data.issue_number, data.pr_number, now, now, now),
+                )
+
+        if data.event_type == "finished" and data.issue_number is not None:
+            now_dt = datetime.fromisoformat(now)
+            run = conn.execute(
+                "SELECT id, started_at FROM pipeline_runs WHERE project=? AND issue_number=? ORDER BY id DESC LIMIT 1",
+                (data.project, data.issue_number),
+            ).fetchone()
+            if run:
+                try:
+                    started = datetime.fromisoformat(run["started_at"].replace("Z", "+00:00"))
+                    issue_secs = int((now_dt - started).total_seconds())
+                except Exception:
+                    issue_secs = None
+                first_pr = conn.execute(
+                    "SELECT created_at FROM issue_history"
+                    " WHERE project=? AND issue_number=? AND pr_number IS NOT NULL"
+                    " ORDER BY id ASC LIMIT 1",
+                    (data.project, data.issue_number),
+                ).fetchone()
+                pr_secs = None
+                if first_pr:
+                    try:
+                        pr_start = datetime.fromisoformat(first_pr["created_at"].replace("Z", "+00:00"))
+                        pr_secs = int((now_dt - pr_start).total_seconds())
+                    except Exception:
+                        pass
+                conn.execute(
+                    "UPDATE pipeline_runs"
+                    " SET outcome=?, completed_at=?, issue_lifetime_seconds=?, pr_lifetime_seconds=?"
+                    " WHERE id=?",
+                    (data.detail or "finished", now, issue_secs, pr_secs, run["id"]),
+                )
+
+        auto_bounty(conn, data, now)
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _insert_verdict(data: VerdictPayload):
@@ -142,33 +145,35 @@ def _insert_verdict(data: VerdictPayload):
 
 def _do_insert_verdict(data: VerdictPayload):
     conn = get_db()
-    now = datetime.now(timezone.utc).isoformat()
-    conn.execute(
-        "INSERT INTO verdicts (project, role, model, points, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-        (data.project, data.role, data.model, data.points, data.reason, now),
-    )
-    existing = conn.execute(
-        "SELECT id, total_points, verdict_count FROM scores WHERE project=? AND role=? AND model IS ?",
-        (data.project, data.role, data.model),
-    ).fetchone()
-    if existing:
+    try:
+        now = datetime.now(timezone.utc).isoformat()
         conn.execute(
-            "UPDATE scores SET total_points=?, verdict_count=?, updated_at=? WHERE id=?",
-            (
-                existing["total_points"] + data.points,
-                existing["verdict_count"] + 1,
-                now,
-                existing["id"],
-            ),
+            "INSERT INTO verdicts (project, role, model, points, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (data.project, data.role, data.model, data.points, data.reason, now),
         )
-    else:
-        conn.execute(
-            "INSERT INTO scores (project, role, model, total_points, verdict_count, updated_at)"
-            " VALUES (?, ?, ?, ?, 1, ?)",
-            (data.project, data.role, data.model, data.points, now),
-        )
-    conn.commit()
-    conn.close()
+        existing = conn.execute(
+            "SELECT id, total_points, verdict_count FROM scores WHERE project=? AND role=? AND model IS ?",
+            (data.project, data.role, data.model),
+        ).fetchone()
+        if existing:
+            conn.execute(
+                "UPDATE scores SET total_points=?, verdict_count=?, updated_at=? WHERE id=?",
+                (
+                    existing["total_points"] + data.points,
+                    existing["verdict_count"] + 1,
+                    now,
+                    existing["id"],
+                ),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO scores (project, role, model, total_points, verdict_count, updated_at)"
+                " VALUES (?, ?, ?, ?, 1, ?)",
+                (data.project, data.role, data.model, data.points, now),
+            )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 @router.post("/api/report", status_code=202)

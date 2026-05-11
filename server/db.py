@@ -138,9 +138,19 @@ def apply_pending_migrations():
     conn.close()
 
 
-def get_db():
+def get_db() -> sqlite3.Connection:
+    """Direct caller — must close explicitly. Used by background tasks / scripts."""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=10000")
     return conn
+
+
+def db_dep():
+    """FastAPI dependency — opens, yields, closes in finally."""
+    conn = get_db()
+    try:
+        yield conn
+    finally:
+        conn.close()
