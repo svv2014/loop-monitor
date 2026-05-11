@@ -1,15 +1,15 @@
+import sqlite3
 from typing import Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
-from server.db import get_db
+from server.db import db_dep
 
 router = APIRouter()
 
 
 @router.get("/api/stats")
-def get_stats():
-    conn = get_db()
+def get_stats(conn: sqlite3.Connection = Depends(db_dep)):
     row = conn.execute(
         """SELECT
                COUNT(*) AS total_runs,
@@ -18,14 +18,12 @@ def get_stats():
                ROUND(100.0 * SUM(CASE WHEN rework_count > 0 THEN 1 ELSE 0 END) / MAX(COUNT(*), 1), 2) AS rework_rate
            FROM pipeline_runs"""
     ).fetchone()
-    conn.close()
     return dict(row) if row else {}
 
 
 @router.get("/api/stats/stages")
-def get_stats_stages():
+def get_stats_stages(conn: sqlite3.Connection = Depends(db_dep)):
     """Avg duration per pipeline stage by pairing *_start and *_done events."""
-    conn = get_db()
     rows = conn.execute("""
         SELECT
             REPLACE(d.event_type, '_done', '') AS stage,
@@ -47,14 +45,12 @@ def get_stats_stages():
         GROUP BY stage
         ORDER BY stage
     """).fetchall()
-    conn.close()
     return [dict(r) for r in rows]
 
 
 @router.get("/api/stats/activity")
-def get_stats_activity():
+def get_stats_activity(conn: sqlite3.Connection = Depends(db_dep)):
     """Daily event counts per project for the last 14 days."""
-    conn = get_db()
     rows = conn.execute("""
         SELECT DATE(created_at) as date, project, COUNT(*) as n
         FROM events
@@ -62,14 +58,12 @@ def get_stats_activity():
         GROUP BY DATE(created_at), project
         ORDER BY date
     """).fetchall()
-    conn.close()
     return [dict(r) for r in rows]
 
 
 @router.get("/api/stats/rework")
-def get_stats_rework():
+def get_stats_rework(conn: sqlite3.Connection = Depends(db_dep)):
     """Per-project rework_start and review_done counts for rework rate cards."""
-    conn = get_db()
     rows = conn.execute("""
         SELECT
             project,
@@ -79,16 +73,13 @@ def get_stats_rework():
         GROUP BY project
         ORDER BY project
     """).fetchall()
-    conn.close()
     return [dict(r) for r in rows]
 
 
 @router.get("/api/projects")
-def get_projects():
+def get_projects(conn: sqlite3.Connection = Depends(db_dep)):
     from server.constants import PROJECTS
-    conn = get_db()
     rows = conn.execute("SELECT DISTINCT project FROM events").fetchall()
-    conn.close()
     active = {r["project"] for r in rows}
     return [{"project": p, "repo": r} for p, r in PROJECTS.items() if p in active]
 
@@ -109,9 +100,8 @@ def _percentile_stats(values: list) -> Optional[dict]:
 
 
 @router.get("/api/projects/{slug}/cycle_times")
-def get_cycle_times(slug: str):
+def get_cycle_times(slug: str, conn: sqlite3.Connection = Depends(db_dep)):
     null_response = {"total_duration": None, "issue_lifetime": None, "pr_lifetime": None}
-    conn = get_db()
     rows = conn.execute(
         """SELECT total_duration_seconds, issue_lifetime_seconds, pr_lifetime_seconds
            FROM pipeline_runs
@@ -119,7 +109,6 @@ def get_cycle_times(slug: str):
            ORDER BY id ASC""",
         (slug,),
     ).fetchall()
-    conn.close()
 
     if not rows:
         return null_response
