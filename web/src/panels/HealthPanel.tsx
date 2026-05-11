@@ -72,6 +72,7 @@ function SubsystemRow({
   );
 }
 
+// TODO(#122): Replace with canonical Drawer component when #122 lands.
 function DetailDrawer({ name, sub, onClose }: { name: string; sub: SubsystemHealth; onClose: () => void }) {
   return (
     <div
