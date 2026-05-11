@@ -1,11 +1,12 @@
 import os
+import sqlite3
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from server.constants import PROJECTS
-from server.db import get_db
+from server.db import db_dep
 from server.helpers.timeline import parse_ts
 
 router = APIRouter()
@@ -65,12 +66,11 @@ def _action_queue_reason(
 
 
 @router.get("/api/action_queue")
-def action_queue():
+def action_queue(conn: sqlite3.Connection = Depends(db_dep)):
     """Items across all projects awaiting human input.
 
     Derived from the latest event per (project, kind, number). No GitHub API call.
     """
-    conn = get_db()
     rows = conn.execute(
         """
         SELECT e.project, e.role, e.event_type, e.issue_number, e.pr_number,
@@ -100,7 +100,6 @@ def action_queue():
         )
         """
     ).fetchall()
-    conn.close()
 
     now = datetime.now(timezone.utc)
     result = []
