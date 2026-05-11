@@ -220,3 +220,43 @@ def test_recent_rows_kept(db_path, monkeypatch):
     assert conn.execute("SELECT COUNT(*) FROM events").fetchone()[0] == 1
     assert conn.execute("SELECT COUNT(*) FROM verdicts").fetchone()[0] == 1
     conn.close()
+
+
+def test_prune_preserves_in_flight(db_path, monkeypatch):
+    monkeypatch.setenv("RETAIN_ISSUE_HISTORY_DAYS", "0")
+    monkeypatch.setenv("RETAIN_PIPELINE_RUNS_DAYS", "0")
+    monkeypatch.setenv("RETAIN_EVENTS_DAYS", "0")
+    monkeypatch.setenv("RETAIN_VERDICTS_DAYS", "0")
+    monkeypatch.setenv("RETAIN_SCORES_DAYS", "0")
+
+    conn = _conn(db_path)
+    # completed run (safe to delete) and in-flight run (must survive)
+    _insert_pipeline_run(conn, project="loop-monitor", issue_number=100, completed=True, days_ago=10)
+    _insert_pipeline_run(conn, project="loop-monitor", issue_number=200, completed=False, days_ago=10)
+    # matching issue_history rows
+    conn.execute(
+        "INSERT INTO issue_history (project, issue_number, role, event_type, created_at)"
+        " VALUES ('loop-monitor', 100, 'builder', 'started', ?)",
+        (_ts(10),),
+    )
+    conn.execute(
+        "INSERT INTO issue_history (project, issue_number, role, event_type, created_at)"
+        " VALUES ('loop-monitor', 200, 'builder', 'started', ?)",
+        (_ts(10),),
+    )
+    conn.commit()
+    conn.close()
+
+    run(db_path=db_path, dry_run=False)
+
+    conn = _conn(db_path)
+    runs = conn.execute(
+        "SELECT issue_number FROM pipeline_runs ORDER BY issue_number"
+    ).fetchall()
+    history = conn.execute(
+        "SELECT issue_number FROM issue_history ORDER BY issue_number"
+    ).fetchall()
+    conn.close()
+
+    assert [r[0] for r in runs] == [200], "in-flight pipeline_runs row must survive"
+    assert [r[0] for r in history] == [200], "issue_history for in-flight run must survive"

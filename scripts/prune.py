@@ -65,6 +65,50 @@ def _delete_events(conn: sqlite3.Connection, cutoff: str) -> int:
     return cur.rowcount
 
 
+def _count_issue_history(conn: sqlite3.Connection, cutoff: str) -> int:
+    return conn.execute(
+        """
+        SELECT COUNT(*) FROM issue_history
+        WHERE created_at < ?
+          AND (project, issue_number) NOT IN (
+            SELECT project, issue_number FROM pipeline_runs
+            WHERE completed_at IS NULL
+          )
+        """,
+        (cutoff,),
+    ).fetchone()[0]
+
+
+def _delete_issue_history(conn: sqlite3.Connection, cutoff: str) -> int:
+    cur = conn.execute(
+        """
+        DELETE FROM issue_history
+        WHERE created_at < ?
+          AND (project, issue_number) NOT IN (
+            SELECT project, issue_number FROM pipeline_runs
+            WHERE completed_at IS NULL
+          )
+        """,
+        (cutoff,),
+    )
+    return cur.rowcount
+
+
+def _count_pipeline_runs(conn: sqlite3.Connection, cutoff: str) -> int:
+    return conn.execute(
+        "SELECT COUNT(*) FROM pipeline_runs WHERE created_at < ? AND completed_at IS NOT NULL",
+        (cutoff,),
+    ).fetchone()[0]
+
+
+def _delete_pipeline_runs(conn: sqlite3.Connection, cutoff: str) -> int:
+    cur = conn.execute(
+        "DELETE FROM pipeline_runs WHERE created_at < ? AND completed_at IS NOT NULL",
+        (cutoff,),
+    )
+    return cur.rowcount
+
+
 _TS_COLUMN = {
     "events": "created_at",
     "verdicts": "created_at",
@@ -107,7 +151,9 @@ def run(db_path: str, dry_run: bool = False) -> None:
         if dry_run:
             counts = {}
             counts["events"] = _count_events(conn, _cutoff(horizons["events"]))
-            for table in ("verdicts", "scores", "issue_history", "pipeline_runs"):
+            counts["issue_history"] = _count_issue_history(conn, _cutoff(horizons["issue_history"]))
+            counts["pipeline_runs"] = _count_pipeline_runs(conn, _cutoff(horizons["pipeline_runs"]))
+            for table in ("verdicts", "scores"):
                 counts[table] = _count_simple(conn, table, _cutoff(horizons[table]))
             conn.close()
             parts = " ".join(f"{t}={n}" for t, n in counts.items())
@@ -115,7 +161,9 @@ def run(db_path: str, dry_run: bool = False) -> None:
         else:
             deleted = {}
             deleted["events"] = _delete_events(conn, _cutoff(horizons["events"]))
-            for table in ("verdicts", "scores", "issue_history", "pipeline_runs"):
+            deleted["issue_history"] = _delete_issue_history(conn, _cutoff(horizons["issue_history"]))
+            deleted["pipeline_runs"] = _delete_pipeline_runs(conn, _cutoff(horizons["pipeline_runs"]))
+            for table in ("verdicts", "scores"):
                 deleted[table] = _delete_simple(conn, table, _cutoff(horizons[table]))
             conn.commit()
             conn.execute("VACUUM")
