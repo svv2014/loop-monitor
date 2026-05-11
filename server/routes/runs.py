@@ -1,11 +1,12 @@
 import json
+import sqlite3
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from server.constants import PROJECTS
-from server.db import get_db
+from server.db import db_dep
 from server.helpers.timeline import parse_ts
 
 router = APIRouter()
@@ -40,8 +41,7 @@ def _derive_stage(event_type: Optional[str]) -> Optional[str]:
 
 
 @router.get("/api/history/{project}/{issue}")
-def get_history(project: str, issue: int):
-    conn = get_db()
+def get_history(project: str, issue: int, conn: sqlite3.Connection = Depends(db_dep)):
     rows = conn.execute(
         """SELECT id, project, issue_number, pr_number, role, event_type, agent, model,
                   duration_seconds, rework_count, created_at
@@ -55,13 +55,11 @@ def get_history(project: str, issue: int):
            FROM pipeline_runs WHERE project=? AND issue_number=? ORDER BY id DESC LIMIT 1""",
         (project, issue),
     ).fetchone()
-    conn.close()
     return {"events": [dict(r) for r in rows], "run": dict(run_row) if run_row else None}
 
 
 @router.get("/api/runs")
-def get_runs():
-    conn = get_db()
+def get_runs(conn: sqlite3.Connection = Depends(db_dep)):
     rows = conn.execute(
         """SELECT id, project, issue_number, pr_number, title, outcome,
                   started_at, completed_at, total_duration_seconds,
@@ -69,13 +67,11 @@ def get_runs():
            FROM pipeline_runs
            ORDER BY id DESC"""
     ).fetchall()
-    conn.close()
     return [dict(r) for r in rows]
 
 
 @router.get("/api/runs/{project}")
-def get_runs_by_project(project: str):
-    conn = get_db()
+def get_runs_by_project(project: str, conn: sqlite3.Connection = Depends(db_dep)):
     rows = conn.execute(
         """SELECT id, project, issue_number, pr_number, title, outcome,
                   started_at, completed_at, total_duration_seconds,
@@ -85,14 +81,12 @@ def get_runs_by_project(project: str):
            ORDER BY id DESC""",
         (project,),
     ).fetchall()
-    conn.close()
     return [dict(r) for r in rows]
 
 
 @router.get("/api/projects/{slug}/prs")
-def get_project_prs(slug: str, include_finished: bool = False):
+def get_project_prs(slug: str, include_finished: bool = False, conn: sqlite3.Connection = Depends(db_dep)):
     """PR monitor: every PR seen by the pipeline with current stage and time-in-stage."""
-    conn = get_db()
     finished_clause = "" if include_finished else " AND outcome IS NULL"
     runs = conn.execute(
         f"""SELECT issue_number, pr_number, title, outcome, completed_at, rework_count
@@ -152,5 +146,4 @@ def get_project_prs(slug: str, include_finished: bool = False):
             "is_draft": is_draft,
         })
 
-    conn.close()
     return result

@@ -1,10 +1,11 @@
+import sqlite3
 import subprocess
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from server.constants import MONITOR_VERSION, SUPPORTED_API_MAJOR
-from server.db import get_db
+from server.db import db_dep
 
 router = APIRouter()
 
@@ -29,8 +30,7 @@ def _git_sha() -> str:
 
 
 @router.get("/api/health")
-def health():
-    conn = get_db()
+def health(conn: sqlite3.Connection = Depends(db_dep)):
     rows = conn.execute(
         "SELECT core_version, COUNT(*) as cnt FROM events WHERE core_version IS NOT NULL GROUP BY core_version"
     ).fetchall()
@@ -39,7 +39,6 @@ def health():
         "SELECT DISTINCT COALESCE(loop_id, '(unknown)') AS loop_id FROM events ORDER BY loop_id"
     ).fetchall()
     loop_ids = [r["loop_id"] for r in loop_rows]
-    conn.close()
     return {
         "status": "ok",
         "monitor_version": MONITOR_VERSION,
@@ -51,8 +50,7 @@ def health():
 
 
 @router.get("/api/loops")
-def get_loops():
-    conn = get_db()
+def get_loops(conn: sqlite3.Connection = Depends(db_dep)):
     rows = conn.execute("""
         SELECT COALESCE(loop_id, '(unknown)') AS loop_id,
                MAX(created_at) AS last_seen,
@@ -62,7 +60,6 @@ def get_loops():
         GROUP BY COALESCE(loop_id, '(unknown)')
         ORDER BY 1
     """).fetchall()
-    conn.close()
     result = []
     for r in rows:
         entry = dict(r)
