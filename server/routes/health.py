@@ -2,9 +2,9 @@ import os
 import subprocess
 import threading
 import time
-import urllib.request
 import urllib.error
-from datetime import datetime, timezone
+import urllib.request
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter

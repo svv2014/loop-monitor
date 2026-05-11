@@ -1,6 +1,4 @@
 import json
-import urllib.error
-import urllib.request
 from unittest.mock import MagicMock
 
 import server.routes.health as health_module
