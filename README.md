@@ -198,6 +198,34 @@ loop-monitor performs no secret stripping. If you enable
 results — terminate auth at a reverse proxy, restrict the network, or
 both.
 
+## Loop watch (temporary)
+
+`scripts/loop-watch.sh` is a **temporary** observability helper for the
+post-stability shakedown (loop#283, #285–#289, bob#26). Every 2h it polls
+`/api/issues/cost`, `/api/active`, `/api/feed`, flags anomalies (high rework,
+repeated reviews, stranded issues, repeated `*_failed` events), applies a small
+set of safe label fixes (PR with red CI → `needs-rework`; orphan issue with a
+full spec → `needs-po`), and appends a comment to a tracking issue (`tracker`
+label, auto-created on first run).
+
+```bash
+# Try without changes first:
+scripts/loop-watch.sh --dry-run
+
+# Schedule via launchd (runs every 7200s):
+cp scripts/com.user.loop-watch.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.user.loop-watch.plist
+
+# Disable when the shakedown ends:
+launchctl unload ~/Library/LaunchAgents/com.user.loop-watch.plist
+rm ~/Library/LaunchAgents/com.user.loop-watch.plist
+```
+
+Env vars: `LOOP_MONITOR_URL` (default `http://localhost:18792`), `LOOP_WATCH_REPO`
+(default `svv2014/loop`), `LOOP_WATCH_TRACKER` (issue number to comment on; auto-created if unset).
+
+**Remove this section and the script once the pipeline is stable again.**
+
 ## Development
 
 ```bash
