@@ -50,18 +50,23 @@ export default function Overview() {
 
   const buckets = useMemo(() => {
     if (eventsGraph) {
-      // Convert EventsGraph (row-per-role-per-hour) to HourBucket[]
-      const map = new Map<number, { hour: number; counts: Record<string, number>; total: number }>();
-      for (let h = 0; h < 24; h++) map.set(h, { hour: h, counts: {}, total: 0 });
+      // Bucket by relative hour from now (slot 23 = current hour, slot 0 = 23h ago).
+      // `b.hour` from /api/events_graph is a UTC ISO string with no Z suffix; append Z so JS parses as UTC.
+      const buckets = Array.from({ length: 24 }, (_, i) => ({
+        hour: i,
+        counts: {} as Record<string, number>,
+        total: 0,
+      }));
+      const now = Date.now();
       for (const b of eventsGraph.buckets) {
-        const hourNum = new Date(b.hour).getHours();
-        const bucket = map.get(hourNum);
-        if (bucket) {
-          bucket.counts[b.role] = (bucket.counts[b.role] ?? 0) + b.count;
-          bucket.total += b.count;
-        }
+        const ts = new Date(b.hour + 'Z').getTime();
+        const hoursAgo = Math.floor((now - ts) / (60 * 60 * 1000));
+        if (hoursAgo < 0 || hoursAgo >= 24) continue;
+        const idx = 23 - hoursAgo;
+        buckets[idx].counts[b.role] = (buckets[idx].counts[b.role] ?? 0) + b.count;
+        buckets[idx].total += b.count;
       }
-      return Array.from(map.values());
+      return buckets;
     }
     return build24hBuckets(history as (LoopEvent & { ts?: number })[]);
   }, [eventsGraph, history]);
