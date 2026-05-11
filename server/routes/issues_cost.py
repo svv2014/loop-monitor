@@ -1,12 +1,13 @@
 import json
 import re
+import sqlite3
 import subprocess
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
-from server.db import get_db
+from server.db import db_dep
 
 router = APIRouter()
 
@@ -115,6 +116,7 @@ def get_issues_cost(
     since: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
+    conn: sqlite3.Connection = Depends(db_dep),
 ) -> list:
     if since is None:
         since_dt = datetime.now(timezone.utc) - timedelta(days=30)
@@ -122,7 +124,6 @@ def get_issues_cost(
     else:
         since_iso = since
 
-    conn = get_db()
     project_param: Optional[str] = project
 
     rows = conn.execute(
@@ -171,7 +172,6 @@ def get_issues_cost(
         """,
         (since_iso, project_param, project_param, limit, offset),
     ).fetchall()
-    conn.close()
 
     now_ts = datetime.now(timezone.utc).timestamp()
     result = []

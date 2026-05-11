@@ -1,46 +1,16 @@
-from fastapi import APIRouter, HTTPException
+import sqlite3
+
+from fastapi import APIRouter, Depends, HTTPException
 
 from server.constants import PROJECTS
-from server.db import get_db
+from server.db import db_dep
 from server.helpers.timeline import build_timeline_events, parse_ts
 
 router = APIRouter()
 
 
-@router.get("/api/stats/timeline/pr/{project}/{pr_number}")
-def get_timeline_by_pr(project: str, pr_number: int):
-    """Look up issue_number from pipeline_runs then return the same timeline payload."""
-    conn = get_db()
-    run_row = conn.execute(
-        "SELECT issue_number FROM pipeline_runs WHERE project=? AND pr_number=? ORDER BY id DESC LIMIT 1",
-        (project, pr_number),
-    ).fetchone()
-
-    if run_row is None:
-        rows = conn.execute(
-            "SELECT * FROM events WHERE project=? AND pr_number=? ORDER BY created_at",
-            (project, pr_number),
-        ).fetchall()
-        conn.close()
-        if not rows:
-            raise HTTPException(status_code=404, detail="PR not found")
-        return {
-            "pr_number": pr_number,
-            "project": project,
-            "issue_number": None,
-            "summary": {},
-            "events": [dict(r) for r in rows],
-        }
-
-    conn.close()
-    return get_timeline(project, run_row["issue_number"])
-
-
-@router.get("/api/stats/timeline/{project}/{issue}")
-def get_timeline(project: str, issue: int):
-    """Stage-by-stage timeline for a single issue."""
-    conn = get_db()
-
+def _get_timeline_data(conn: sqlite3.Connection, project: str, issue: int) -> dict:
+    """Shared implementation for timeline queries."""
     summary_row = conn.execute(
         """SELECT title, outcome, total_duration_seconds, rework_count, pr_number,
                   issue_lifetime_seconds, pr_lifetime_seconds
@@ -76,8 +46,6 @@ def get_timeline(project: str, issue: int):
             (project, issue),
         ).fetchall()
 
-    conn.close()
-
     events = build_timeline_events(history_rows)
 
     total_elapsed_seconds = None
@@ -103,10 +71,41 @@ def get_timeline(project: str, issue: int):
     }
 
 
+@router.get("/api/stats/timeline/pr/{project}/{pr_number}")
+def get_timeline_by_pr(project: str, pr_number: int, conn: sqlite3.Connection = Depends(db_dep)):
+    """Look up issue_number from pipeline_runs then return the same timeline payload."""
+    run_row = conn.execute(
+        "SELECT issue_number FROM pipeline_runs WHERE project=? AND pr_number=? ORDER BY id DESC LIMIT 1",
+        (project, pr_number),
+    ).fetchone()
+
+    if run_row is None:
+        rows = conn.execute(
+            "SELECT * FROM events WHERE project=? AND pr_number=? ORDER BY created_at",
+            (project, pr_number),
+        ).fetchall()
+        if not rows:
+            raise HTTPException(status_code=404, detail="PR not found")
+        return {
+            "pr_number": pr_number,
+            "project": project,
+            "issue_number": None,
+            "summary": {},
+            "events": [dict(r) for r in rows],
+        }
+
+    return _get_timeline_data(conn, project, run_row["issue_number"])
+
+
+@router.get("/api/stats/timeline/{project}/{issue}")
+def get_timeline(project: str, issue: int, conn: sqlite3.Connection = Depends(db_dep)):
+    """Stage-by-stage timeline for a single issue."""
+    return _get_timeline_data(conn, project, issue)
+
+
 @router.get("/api/events_graph")
-def get_events_graph(window: int = 24):
+def get_events_graph(window: int = 24, conn: sqlite3.Connection = Depends(db_dep)):
     window = max(1, min(window, 168))
-    conn = get_db()
     rows = conn.execute(
         """SELECT strftime('%Y-%m-%dT%H:00:00', created_at) AS hour, role, COUNT(*) AS count
            FROM events
@@ -115,5 +114,4 @@ def get_events_graph(window: int = 24):
            ORDER BY hour""",
         (f"-{window}",),
     ).fetchall()
-    conn.close()
     return {"window_hours": window, "buckets": [dict(r) for r in rows]}
