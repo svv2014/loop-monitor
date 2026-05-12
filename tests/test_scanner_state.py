@@ -112,7 +112,7 @@ class TestScannerLogCapParsing:
             "[2026-05-09 10:00:00] [scanner] loop-po-handler max=4 (per-tick emit cap)\n"
             "[2026-05-09 10:00:00] [scanner] loop-dev-handler max=4 (per-tick emit cap)\n"
             "[2026-05-09 10:00:00] [scanner] loop-qa-handler max=4 (per-tick emit cap)\n"
-            "[2026-05-09 10:00:00] [scanner] loop-reviewer-handler max=4 (per-tick emit cap)\n"
+            "[2026-05-09 10:00:00] [scanner] loop-review-handler max=4 (per-tick emit cap)\n"
             "[2026-05-09 10:00:00] [scanner] loop-merge-handler max=4 (per-tick emit cap)\n"
         )
 
@@ -186,3 +186,35 @@ class TestHelperCountInflight:
 
         monkeypatch.setattr("server.routes.scanner_state.subprocess.run", raise_err)
         assert ss_module._count_inflight("dev") == 0
+
+    def test_review_role_uses_review_handler(self, monkeypatch):
+        calls = []
+
+        def capture(*a, **kw):
+            calls.append(a[0])
+            return _make_subprocess_mock(stdout="1234\n", returncode=0)
+
+        monkeypatch.setattr("server.routes.scanner_state.subprocess.run", capture)
+        result = ss_module._count_inflight("review")
+        assert result == 1
+        assert calls[0] == ["pgrep", "-f", "loop-review-handler"]
+
+
+class TestReviewCapParsing:
+    """_read_caps picks up loop-review-handler cap lines (not loop-reviewer-handler)."""
+
+    def test_review_handler_cap_parsed(self, tmp_path):
+        log = tmp_path / "loop-scanner.log"
+        log.write_text(
+            "[2026-05-09 10:00:00] [scanner] loop-review-handler max=3 (per-tick emit cap)\n"
+        )
+        caps = ss_module._read_caps(log)
+        assert caps["review"] == 3
+
+    def test_reviewer_handler_not_matched(self, tmp_path):
+        log = tmp_path / "loop-scanner.log"
+        log.write_text(
+            "[2026-05-09 10:00:00] [scanner] loop-reviewer-handler max=3 (per-tick emit cap)\n"
+        )
+        caps = ss_module._read_caps(log)
+        assert caps["review"] is None

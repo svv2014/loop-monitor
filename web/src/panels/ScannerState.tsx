@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchScannerState } from '../lib/api';
 import type { RetryRow } from '../lib/types';
 
-const ROLES = ['po', 'dev', 'qa', 'reviewer', 'merge'] as const;
+const ROLES = ['po', 'dev', 'qa', 'review', 'merge'] as const;
 
 interface Props {
   projectId: string;
