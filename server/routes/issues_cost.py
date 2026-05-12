@@ -7,6 +7,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends
 
+from server.constants import PROJECTS
 from server.db import db_dep
 
 router = APIRouter()
@@ -29,11 +30,15 @@ def _fetch_gh_meta(project: str, issue_number: int) -> dict:
             return data
 
     default: dict = {"title": "", "state": "unknown", "priority": None, "body": "", "merged": False}
+    org_repo = PROJECTS.get(project)
+    if org_repo is None:
+        _gh_cache[key] = (now + _GH_TTL, default)
+        return default
     try:
         result = subprocess.run(
             [
                 "gh", "api",
-                f"repos/svv2014/{project}/issues/{issue_number}",
+                f"repos/{org_repo}/issues/{issue_number}",
                 "--jq",
                 "{title, state, body, labels: [.labels[].name], pull_request}",
             ],
