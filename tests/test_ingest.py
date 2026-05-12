@@ -95,6 +95,103 @@ def test_loop_id_null_when_absent(isolated_client):
     assert row[0] is None
 
 
+def test_label_transition_accepted(isolated_client):
+    resp = isolated_client.post("/api/report", json={
+        "project": "p", "role": "dev", "event_type": "label_transition",
+        "payload": {
+            "target_kind": "issue", "number": 42,
+            "before_labels": ["needs-review"], "after_labels": ["approved"],
+            "op": "swap", "source": "reconciler",
+        },
+    })
+    assert resp.status_code == 202
+
+
+def test_reconcile_check_accepted(isolated_client):
+    resp = isolated_client.post("/api/report", json={
+        "project": "p", "role": "dev", "event_type": "reconcile_check",
+        "payload": {
+            "target_kind": "pr", "target_num": 7,
+            "check_name": "label_gate", "decision": "skip",
+        },
+    })
+    assert resp.status_code == 202
+
+
+def test_reconcile_check_with_detail_accepted(isolated_client):
+    resp = isolated_client.post("/api/report", json={
+        "project": "p", "role": "dev", "event_type": "reconcile_check",
+        "payload": {
+            "target_kind": "issue", "target_num": 3,
+            "check_name": "bounty_gate", "decision": "mutate",
+            "detail": "applied auto-bounty rule",
+        },
+    })
+    assert resp.status_code == 202
+
+
+def test_label_transition_missing_field_422(isolated_client):
+    resp = isolated_client.post("/api/report", json={
+        "project": "p", "role": "dev", "event_type": "label_transition",
+        "payload": {
+            "target_kind": "issue", "number": 1,
+            # missing: before_labels, after_labels, op, source
+        },
+    })
+    assert resp.status_code == 422
+
+
+def test_reconcile_check_missing_field_422(isolated_client):
+    resp = isolated_client.post("/api/report", json={
+        "project": "p", "role": "dev", "event_type": "reconcile_check",
+        "payload": {
+            "target_kind": "issue",
+            # missing: target_num, check_name, decision
+        },
+    })
+    assert resp.status_code == 422
+
+
+def test_label_transition_invalid_target_kind_422(isolated_client):
+    resp = isolated_client.post("/api/report", json={
+        "project": "p", "role": "dev", "event_type": "label_transition",
+        "payload": {
+            "target_kind": "ticket", "number": 1,
+            "before_labels": [], "after_labels": ["x"],
+            "op": "add", "source": "handler",
+        },
+    })
+    assert resp.status_code == 422
+
+
+def test_reconcile_check_invalid_decision_422(isolated_client):
+    resp = isolated_client.post("/api/report", json={
+        "project": "p", "role": "dev", "event_type": "reconcile_check",
+        "payload": {
+            "target_kind": "pr", "target_num": 1,
+            "check_name": "gate", "decision": "ignore",
+        },
+    })
+    assert resp.status_code == 422
+
+
+def test_legacy_bounty_event_still_accepted(isolated_client):
+    resp = isolated_client.post("/api/report", json={
+        "project": "p", "role": "dev",
+        "event_type": "bounty_awarded",
+    })
+    assert resp.status_code == 202
+
+
+def test_legacy_bounty_event_no_payload_enforcement(isolated_client):
+    resp = isolated_client.post("/api/report", json={
+        "project": "p", "role": "dev",
+        "event_type": "bounty_started",
+        "payload": {"anything": "goes"},
+    })
+    assert resp.status_code == 202
+
+
 def test_concurrent_reports_both_persisted(shared_client):
     """Concurrent POST /api/report writes must both persist (WAL + busy_timeout)."""
     import threading
