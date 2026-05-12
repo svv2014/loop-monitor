@@ -95,6 +95,40 @@ def test_loop_id_null_when_absent(isolated_client):
     assert row[0] is None
 
 
+def test_missing_project_returns_422(isolated_client):
+    resp = isolated_client.post("/api/report", json={
+        "role": "builder",
+        "event_type": "started",
+    })
+    assert resp.status_code == 422
+
+
+def test_missing_role_returns_422(isolated_client):
+    resp = isolated_client.post("/api/report", json={
+        "project": "proj-a",
+        "event_type": "started",
+    })
+    assert resp.status_code == 422
+
+
+def test_full_payload_accepted_and_persisted(isolated_client):
+    import time
+    resp = isolated_client.post("/api/report", json={
+        "project": "proj-full",
+        "role": "builder",
+        "event_type": "started",
+    })
+    assert resp.status_code == 202
+    assert resp.json()["status"] == "accepted"
+    time.sleep(0.05)  # background task
+    conn = sqlite3.connect(server.db.DB_PATH)
+    count = conn.execute(
+        "SELECT COUNT(*) FROM events WHERE project='proj-full'"
+    ).fetchone()[0]
+    conn.close()
+    assert count == 1
+
+
 def test_concurrent_reports_both_persisted(shared_client):
     """Concurrent POST /api/report writes must both persist (WAL + busy_timeout)."""
     import threading
