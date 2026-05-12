@@ -7,6 +7,7 @@ import Overview from './screens/Overview';
 import Logs from './screens/Logs';
 import ProjectDetail from './screens/ProjectDetail';
 import Queue from './screens/Queue';
+import Timeline from './screens/Timeline';
 import WorkerDetail from './screens/WorkerDetail';
 import Cost from './screens/Cost';
 import { useHashRoute } from './router';
@@ -22,13 +23,14 @@ const SCREEN_KEYS: Record<string, string> = {
 };
 
 export default function App() {
-  const { screen: hashScreen, projectId: hashProjectId, navigateTo } = useHashRoute();
+  const { screen: hashScreen, projectId: hashProjectId, issueNum: hashIssueNum, navigateTo } = useHashRoute();
 
   // Derive UI screen from hash. 'project' is a sub-state of 'projects' nav item.
   const [navScreen, setNavScreen] = useState<string>(
-    hashScreen === 'project' ? 'projects' : hashScreen,
+    hashScreen === 'project' ? 'projects' : hashScreen === 'timeline' ? 'projects' : hashScreen,
   );
   const [projectId, setProjectId] = useState<string | null>(hashProjectId);
+  const [issueNum, setIssueNum] = useState<number | null>(hashIssueNum);
   const [allProjectIds, setAllProjectIds] = useState<string[]>([]);
 
   // Fetch all known project IDs from /api/status for the project switcher
@@ -44,18 +46,25 @@ export default function App() {
 
   // When the hash changes externally (back/forward), sync local state
   useEffect(() => {
-    if (hashScreen === 'project' && hashProjectId) {
+    if (hashScreen === 'timeline' && hashProjectId && hashIssueNum != null) {
       setNavScreen('projects');
       setProjectId(hashProjectId);
-    } else if (hashScreen !== 'project') {
+      setIssueNum(hashIssueNum);
+    } else if (hashScreen === 'project' && hashProjectId) {
+      setNavScreen('projects');
+      setProjectId(hashProjectId);
+      setIssueNum(null);
+    } else if (hashScreen !== 'project' && hashScreen !== 'timeline') {
       setNavScreen(hashScreen);
+      setIssueNum(null);
     }
-  }, [hashScreen, hashProjectId]);
+  }, [hashScreen, hashProjectId, hashIssueNum]);
 
   function handleNavChange(s: string) {
     setNavScreen(s);
     if (s !== 'projects') {
       setProjectId(null);
+      setIssueNum(null);
       if (s !== 'cost') {
         navigateTo(s as 'overview' | 'queue' | 'projects' | 'workers' | 'project' | 'logs');
       }
@@ -64,16 +73,34 @@ export default function App() {
 
   function handleProjectChange(id: string) {
     setProjectId(id);
+    setIssueNum(null);
     navigateTo('project', id);
   }
 
   function handleBack() {
     setProjectId(null);
+    setIssueNum(null);
     navigateTo('overview');
     setNavScreen('overview');
   }
 
-  const isProjectDetail = navScreen === 'projects' && projectId != null;
+  function handleTimelineOpen(slug: string, num: number) {
+    setProjectId(slug);
+    setIssueNum(num);
+    navigateTo('timeline', slug, num);
+  }
+
+  function handleTimelineBack() {
+    if (projectId) {
+      setIssueNum(null);
+      navigateTo('project', projectId);
+    } else {
+      handleBack();
+    }
+  }
+
+  const isTimeline = navScreen === 'projects' && projectId != null && issueNum != null;
+  const isProjectDetail = navScreen === 'projects' && projectId != null && issueNum == null;
 
   const activeQuery = useQuery({
     queryKey: ['active'],
@@ -108,14 +135,21 @@ export default function App() {
     <div className="app">
       <Logo />
       <TopBar events={events} online={online} version={version} />
-      <NavRail screen={isProjectDetail ? 'projects' : navScreen} setScreen={handleNavChange} />
+      <NavRail screen={(isProjectDetail || isTimeline) ? 'projects' : navScreen} setScreen={handleNavChange} />
       <main className="main">
-        {isProjectDetail && projectId != null ? (
+        {isTimeline && projectId != null && issueNum != null ? (
+          <Timeline
+            projectId={projectId}
+            issueNum={issueNum}
+            onBack={handleTimelineBack}
+          />
+        ) : isProjectDetail && projectId != null ? (
           <ProjectDetail
             projectId={projectId}
             allProjectIds={allProjectIds.length > 0 ? allProjectIds : [projectId]}
             onBack={handleBack}
             onProjectChange={handleProjectChange}
+            onTimelineOpen={handleTimelineOpen}
           />
         ) : navScreen === 'overview' ? (
           <Overview />

@@ -203,6 +203,18 @@ export interface LogsResponse {
   lines: LogLine[];
 }
 
+export interface TimelineEvent {
+  id: number;
+  ts: string;
+  type: string;
+  payload: Record<string, unknown> | null;
+  pr_number: number | null;
+}
+
+export interface TimelineResponse {
+  events: TimelineEvent[];
+}
+
 export interface IssueCostRow {
   project: string;
   issue_number: number;

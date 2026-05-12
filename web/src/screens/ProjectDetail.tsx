@@ -15,6 +15,7 @@ interface ProjectDetailProps {
   allProjectIds: string[];
   onBack: () => void;
   onProjectChange: (id: string) => void;
+  onTimelineOpen: (slug: string, num: number) => void;
 }
 
 const ROLE_COLORS: Record<string, string> = {
@@ -58,7 +59,7 @@ function fmtDuration(secs: number | null): string {
   return m ? `${h}h ${m}m` : `${h}h`;
 }
 
-export default function ProjectDetail({ projectId, allProjectIds, onBack, onProjectChange }: ProjectDetailProps) {
+export default function ProjectDetail({ projectId, allProjectIds, onBack, onProjectChange, onTimelineOpen }: ProjectDetailProps) {
   const [runs, setRuns] = useState<PipelineRun[]>([]);
   const [prs, setPrs] = useState<PRMonitorEntry[]>([]);
   const [feed, setFeed] = useState<FeedItem[]>([]);
@@ -226,7 +227,15 @@ export default function ProjectDetail({ projectId, allProjectIds, onBack, onProj
                 )}
                 {issues.map(i => (
                   <tr key={i.num}>
-                    <td className="mono" style={{ color: 'var(--fg)' }}>#{i.num}</td>
+                    <td className="mono" style={{ color: 'var(--fg)' }}>
+                      <button
+                        className="btn"
+                        style={{ padding: '1px 5px', fontSize: 11 }}
+                        onClick={() => onTimelineOpen(projectId, i.num)}
+                      >
+                        #{i.num}
+                      </button>
+                    </td>
                     <td>
                       <span className="tag" style={{
                         color: i.status === 'merged'  ? 'var(--role-merge)'

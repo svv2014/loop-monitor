@@ -83,6 +83,21 @@ MIGRATIONS = [
         "ALTER TABLE pipeline_runs ADD COLUMN issue_lifetime_seconds INTEGER; "
         "ALTER TABLE pipeline_runs ADD COLUMN pr_lifetime_seconds INTEGER",
     ),
+    (
+        "0004_event_audit",
+        """
+        CREATE TABLE IF NOT EXISTS event_audit (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project TEXT NOT NULL,
+            issue_number INTEGER NOT NULL,
+            pr_number INTEGER,
+            ts TEXT NOT NULL,
+            type TEXT NOT NULL,
+            payload TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_event_audit_ticket ON event_audit (project, issue_number)
+        """,
+    ),
 ]
 
 
@@ -98,6 +113,10 @@ def _migration_already_applied(conn: sqlite3.Connection, version_id: str) -> boo
     if version_id == "0003_add_pipeline_run_cols":
         cols = {r[1] for r in conn.execute("PRAGMA table_info(pipeline_runs)")}
         return "issue_lifetime_seconds" in cols
+    if version_id == "0004_event_audit":
+        return bool(conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='event_audit'"
+        ).fetchone())
     return False
 
 
