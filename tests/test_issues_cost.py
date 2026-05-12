@@ -1,4 +1,5 @@
 import sqlite3
+import subprocess
 from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
@@ -124,6 +125,45 @@ def test_gh_api_unavailable(tmp_path, monkeypatch):
     assert row is not None
     assert row["priority"] is None
     assert row["title"] == ""
+
+
+def test_fetch_gh_meta_uses_project_repo_mapping(monkeypatch):
+    issues_cost_module._gh_cache.clear()
+    calls = []
+
+    def _run(cmd, **kwargs):
+        calls.append((cmd, kwargs))
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            stdout=(
+                '{"title":"Mapped","state":"open","body":"",'
+                '"labels":["p1-high"],"pull_request":{"merged_at":null}}'
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(issues_cost_module.subprocess, "run", _run)
+
+    meta = issues_cost_module._fetch_gh_meta("ntc", 198)
+
+    assert calls[0][0][2] == "repos/svv2014/NanoTraderCopilot/issues/198"
+    assert meta["title"] == "Mapped"
+    assert meta["priority"] == "p1-high"
+    assert meta["merged"] is False
+
+
+def test_fetch_gh_meta_unknown_project_returns_default_without_call(monkeypatch):
+    issues_cost_module._gh_cache.clear()
+
+    def _run(*args, **kwargs):
+        raise AssertionError("subprocess.run should not be called for unknown projects")
+
+    monkeypatch.setattr(issues_cost_module.subprocess, "run", _run)
+
+    meta = issues_cost_module._fetch_gh_meta("unknown-project", 198)
+
+    assert meta == {"title": "", "state": "unknown", "priority": None, "body": "", "merged": False}
 
 
 # (f) since filter excludes events older than the cutoff
