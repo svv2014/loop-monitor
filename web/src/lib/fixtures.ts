@@ -20,6 +20,8 @@ import type {
   ClaudeUsage,
   ScannerState,
   IssueCostRow,
+  TokenSpend,
+  TokenSpendRow,
 } from './types';
 
 const PROJECTS = [
@@ -335,6 +337,45 @@ export function getFixtureClaudeUsage(): ClaudeUsage {
 // Full history for use by transforms (same data that would come from /api/history)
 export function getFixtureHistoryAll(): RawEvent[] {
   return HISTORY;
+}
+
+export function getFixtureTokenSpend(): TokenSpend {
+  resetSeed();
+  const CLAUDE_AGENTS = AGENTS.filter(a => a.agent === 'claude');
+  const rows: TokenSpendRow[] = [];
+  const now = Date.now();
+  for (let d = 29; d >= 0; d--) {
+    const dt = new Date(now - d * 86400_000);
+    const dateStr = dt.toISOString().slice(0, 10);
+    for (const role of ROLES) {
+      const p = pick(PROJECTS);
+      const ag = pick(CLAUDE_AGENTS);
+      const n = randInt(1, 15);
+      const tpe = 5000;
+      const inp = Math.floor(n * tpe * 0.8);
+      const out = n * tpe - inp;
+      const cost = parseFloat(((inp / 1_000_000 * 3.0) + (out / 1_000_000 * 15.0)).toFixed(6));
+      rows.push({
+        date: dateStr,
+        role,
+        project: p.id,
+        model: ag.model,
+        event_count: n,
+        input_tokens: inp,
+        output_tokens: out,
+        cost_usd: cost,
+      });
+    }
+  }
+  return {
+    rows,
+    config: {
+      tokens_per_event: 5000,
+      input_ratio: 0.8,
+      cost_per_1m_input: 3.0,
+      cost_per_1m_output: 15.0,
+    },
+  };
 }
 
 export function getFixtureIssuesCost(): IssueCostRow[] {

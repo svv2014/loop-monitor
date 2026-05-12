@@ -213,6 +213,29 @@ export interface FailureContext {
   log_path: string | null;
 }
 
+export interface TokenSpendRow {
+  date: string;
+  role: string;
+  project: string;
+  model: string;
+  event_count: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+}
+
+export interface TokenSpendConfig {
+  tokens_per_event: number;
+  input_ratio: number;
+  cost_per_1m_input: number;
+  cost_per_1m_output: number;
+}
+
+export interface TokenSpend {
+  rows: TokenSpendRow[];
+  config: TokenSpendConfig;
+}
+
 export interface IssueCostRow {
   project: string;
   issue_number: number;
