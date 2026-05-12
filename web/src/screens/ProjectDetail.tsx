@@ -72,7 +72,7 @@ export default function ProjectDetail({ projectId, allProjectIds, onBack, onProj
     setRuns([]);
     fetch(`/api/runs/${encodeURIComponent(projectId)}`)
       .then(r => r.ok ? r.json() : Promise.reject(r.status))
-      .then((data: PipelineRun[]) => setRuns(data))
+      .then((data: { runs: PipelineRun[] }) => setRuns(data.runs))
       .catch(() => setRuns([]));
   }, [projectId]);
 

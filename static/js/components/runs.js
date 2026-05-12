@@ -28,7 +28,7 @@ export function showProjectPanel(project) {
   currentProject = project;
   fetch('/api/runs/' + encodeURIComponent(project))
     .then(r => r.ok ? r.json() : Promise.reject(r.status))
-    .then(rows => renderRunsTable(project, rows))
+    .then(payload => renderRunsTable(project, payload.runs || []))
     .catch(() => {
       document.getElementById('runs-table-body').innerHTML =
         '<tr><td colspan="6" style="color:var(--red);text-align:center;padding:16px">Failed to load runs</td></tr>';

@@ -32,8 +32,8 @@ async function fetchAndRenderCycleTime(proj) {
     const p90    = fmtDur(total.p90_seconds);
     const label  = `median: ${median} · P90: ${p90} · (last ${total.sample_size} runs)`;
     const runsRes  = await fetch(`/api/runs/${encodeURIComponent(proj)}`);
-    const runsData = runsRes.ok ? await runsRes.json() : [];
-    const spark    = renderSparkline(runsData);
+    const runsJson = runsRes.ok ? await runsRes.json() : {};
+    const spark    = renderSparkline(runsJson.runs || []);
     panel.innerHTML =
       `<span title="Median time from first event to completion, last ${total.sample_size} runs" style="color:var(--muted)">${escHtml(label)}</span>${spark}`;
   } catch {

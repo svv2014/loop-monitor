@@ -58,7 +58,10 @@ def test_finished_event_sets_lifecycle(isolated_client):
 def test_runs_empty(isolated_client):
     response = isolated_client.get("/api/runs")
     assert response.status_code == 200
-    assert response.json() == []
+    data = response.json()
+    assert data["runs"] == []
+    assert data["total"] == 0
+    assert data["limit"] == 200
 
 
 def test_runs_created_after_report(isolated_client):
@@ -68,9 +71,10 @@ def test_runs_created_after_report(isolated_client):
     response = isolated_client.get("/api/runs")
     assert response.status_code == 200
     data = response.json()
-    assert len(data) == 1
-    assert data[0]["issue_number"] == 20
-    assert data[0]["project"] == "proj-r"
+    assert len(data["runs"]) == 1
+    assert data["runs"][0]["issue_number"] == 20
+    assert data["runs"][0]["project"] == "proj-r"
+    assert data["total"] == 1
 
 
 def test_runs_by_project(isolated_client):
@@ -83,8 +87,9 @@ def test_runs_by_project(isolated_client):
     response = isolated_client.get("/api/runs/proj-p1")
     assert response.status_code == 200
     data = response.json()
-    assert len(data) == 1
-    assert data[0]["project"] == "proj-p1"
+    assert len(data["runs"]) == 1
+    assert data["runs"][0]["project"] == "proj-p1"
+    assert data["total"] == 1
 
 
 def test_pipeline_run_not_duplicated(isolated_client):
@@ -97,8 +102,44 @@ def test_pipeline_run_not_duplicated(isolated_client):
     response = isolated_client.get("/api/runs/proj-nd")
     assert response.status_code == 200
     data = response.json()
-    assert len(data) == 1
-    assert data[0]["pr_number"] == 99
+    assert len(data["runs"]) == 1
+    assert data["runs"][0]["pr_number"] == 99
+
+
+def test_runs_default_cap(isolated_client):
+    conn = sqlite3.connect(server.db.DB_PATH)
+    n = 210
+    conn.executemany(
+        """INSERT INTO pipeline_runs (project, issue_number, created_at)
+           VALUES (?, ?, '2026-01-01T00:00:00+00:00')""",
+        [("proj-cap", i) for i in range(1, n + 1)],
+    )
+    conn.commit()
+    conn.close()
+
+    response = isolated_client.get("/api/runs/proj-cap")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["runs"]) == 200
+    assert data["total"] == n
+    assert data["limit"] == 200
+
+
+def test_runs_custom_limit_clamped(isolated_client):
+    conn = sqlite3.connect(server.db.DB_PATH)
+    conn.executemany(
+        """INSERT INTO pipeline_runs (project, issue_number, created_at)
+           VALUES (?, ?, '2026-01-01T00:00:00+00:00')""",
+        [("proj-clamp", i) for i in range(1, 6)],
+    )
+    conn.commit()
+    conn.close()
+
+    resp_low = isolated_client.get("/api/runs/proj-clamp?limit=0")
+    assert resp_low.json()["limit"] == 1
+
+    resp_high = isolated_client.get("/api/runs/proj-clamp?limit=9999")
+    assert resp_high.json()["limit"] == 1000
 
 
 def test_history_loop_id_filter(isolated_client):

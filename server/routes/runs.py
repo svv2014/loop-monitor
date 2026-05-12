@@ -3,7 +3,7 @@ import sqlite3
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from server.constants import PROJECTS
 from server.db import db_dep
@@ -59,29 +59,39 @@ def get_history(project: str, issue: int, conn: sqlite3.Connection = Depends(db_
 
 
 @router.get("/api/runs")
-def get_runs(conn: sqlite3.Connection = Depends(db_dep)):
+def get_runs(limit: int = Query(200), conn: sqlite3.Connection = Depends(db_dep)):
+    limit = max(1, min(limit, 1000))
+    total = conn.execute("SELECT COUNT(*) FROM pipeline_runs").fetchone()[0]
     rows = conn.execute(
         """SELECT id, project, issue_number, pr_number, title, outcome,
                   started_at, completed_at, total_duration_seconds,
                   rework_count, total_bounty, created_at
            FROM pipeline_runs
-           ORDER BY id DESC"""
+           ORDER BY id DESC
+           LIMIT ?""",
+        (limit,),
     ).fetchall()
-    return [dict(r) for r in rows]
+    return {"runs": [dict(r) for r in rows], "total": total, "limit": limit}
 
 
 @router.get("/api/runs/{project}")
-def get_runs_by_project(project: str, conn: sqlite3.Connection = Depends(db_dep)):
+def get_runs_by_project(project: str, limit: int = Query(200), conn: sqlite3.Connection = Depends(db_dep)):
+    limit = max(1, min(limit, 1000))
+    total = conn.execute(
+        "SELECT COUNT(*) FROM pipeline_runs WHERE project=?",
+        (project,),
+    ).fetchone()[0]
     rows = conn.execute(
         """SELECT id, project, issue_number, pr_number, title, outcome,
                   started_at, completed_at, total_duration_seconds,
                   rework_count, total_bounty, created_at
            FROM pipeline_runs
            WHERE project=?
-           ORDER BY id DESC""",
-        (project,),
+           ORDER BY id DESC
+           LIMIT ?""",
+        (project, limit),
     ).fetchall()
-    return [dict(r) for r in rows]
+    return {"runs": [dict(r) for r in rows], "total": total, "limit": limit}
 
 
 @router.get("/api/projects/{slug}/prs")

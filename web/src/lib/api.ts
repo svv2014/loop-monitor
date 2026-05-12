@@ -93,9 +93,18 @@ export async function fetchActionQueue(): Promise<QueueItem[]> {
   return get<QueueItem[]>('/api/action_queue');
 }
 
-export async function fetchRuns(project: string): Promise<PipelineRun[]> {
-  if (isFixtureMode()) return fx.getFixtureRuns(project);
-  return get<PipelineRun[]>(`/api/runs/${encodeURIComponent(project)}`);
+export interface RunsEnvelope {
+  runs: PipelineRun[];
+  total: number;
+  limit: number;
+}
+
+export async function fetchRuns(project: string): Promise<RunsEnvelope> {
+  if (isFixtureMode()) {
+    const runs = fx.getFixtureRuns(project);
+    return { runs, total: runs.length, limit: 200 };
+  }
+  return get<RunsEnvelope>(`/api/runs/${encodeURIComponent(project)}`);
 }
 
 export async function fetchPRMonitor(project: string): Promise<PRMonitorEntry[]> {
