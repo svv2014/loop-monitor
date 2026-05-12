@@ -9,7 +9,7 @@ from fastapi import APIRouter
 
 router = APIRouter()
 
-ROLES = ["po", "dev", "qa", "reviewer", "merge"]
+ROLES = ["po", "dev", "qa", "review", "merge"]
 
 # Matches loop's current retry policy; update here if loop ever exposes the limit
 RETRY_MAX = 2

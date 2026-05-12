@@ -365,7 +365,7 @@ export function getFixtureScannerState(): ScannerState {
       po:       { in_flight: 1, cap: 4 },
       dev:      { in_flight: 2, cap: 4 },
       qa:       { in_flight: 0, cap: 4 },
-      reviewer: { in_flight: 1, cap: 4 },
+      review: { in_flight: 1, cap: 4 },
       merge:    { in_flight: 0, cap: 2 },
     },
     retries: [
