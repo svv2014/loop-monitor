@@ -1,4 +1,6 @@
+import json
 import sqlite3
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends
@@ -84,6 +86,109 @@ def get_projects(conn: sqlite3.Connection = Depends(db_dep)):
     return [{"project": p, "repo": r} for p, r in PROJECTS.items() if p in active]
 
 
+_TS_FORMATS = (
+    "%Y-%m-%dT%H:%M:%S.%f%z",
+    "%Y-%m-%dT%H:%M:%S%z",
+    "%Y-%m-%dT%H:%M:%S",
+    "%Y-%m-%d %H:%M:%S",
+)
+
+_MIN_STAGE_SAMPLES = 5
+
+
+def _parse_ts_unix(ts_str: Optional[str]) -> Optional[float]:
+    if not ts_str:
+        return None
+    normalized = str(ts_str).replace("+0000", "+00:00").replace(" ", "T")
+    for fmt in _TS_FORMATS:
+        try:
+            dt = datetime.strptime(normalized, fmt)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.timestamp()
+        except ValueError:
+            continue
+    return None
+
+
+def _load_label_transitions(conn: sqlite3.Connection, slug: str) -> dict[int, list]:
+    """Load label_transition events grouped by issue_number."""
+    rows = conn.execute(
+        """SELECT issue_number, payload, created_at
+           FROM events
+           WHERE project = ? AND event_type = 'label_transition' AND issue_number IS NOT NULL
+           ORDER BY issue_number, created_at ASC""",
+        (slug,),
+    ).fetchall()
+
+    by_issue: dict[int, list] = {}
+    for row in rows:
+        inum = row["issue_number"]
+        if inum not in by_issue:
+            by_issue[inum] = []
+        try:
+            payload = json.loads(row["payload"]) if isinstance(row["payload"], str) else (row["payload"] or {})
+        except (json.JSONDecodeError, TypeError):
+            payload = {}
+        by_issue[inum].append({"payload": payload, "created_at": row["created_at"]})
+
+    return by_issue
+
+
+def _compute_stage_durations(by_issue: dict) -> dict[str, list[float]]:
+    """Bucket consecutive label_transition event durations by (from_label, to_label)."""
+    buckets: dict[str, list[float]] = {}
+
+    for _issue_num, events in by_issue.items():
+        prev_ts: Optional[float] = None
+
+        for ev in events:
+            payload = ev["payload"]
+            ts = _parse_ts_unix(ev["created_at"])
+
+            before = set(payload.get("before_labels") or [])
+            after = set(payload.get("after_labels") or [])
+            removed = before - after
+            added = after - before
+
+            if prev_ts is not None and removed and added and ts is not None:
+                duration = ts - prev_ts
+                if duration >= 0:
+                    for fl in removed:
+                        for tl in added:
+                            key = f"{fl}->{tl}"
+                            buckets.setdefault(key, []).append(duration)
+
+            prev_ts = ts
+
+    return buckets
+
+
+def _detect_rework_for_run(events: list) -> bool:
+    """Return True if this run has a backward label transition (label reappears after removal)."""
+    removed_labels: set[str] = set()
+    for ev in events:
+        payload = ev["payload"]
+        before = set(payload.get("before_labels") or [])
+        after = set(payload.get("after_labels") or [])
+        if removed_labels & after:
+            return True
+        removed_labels |= before - after
+    return False
+
+
+def _stage_percentile_stats(values: list) -> Optional[dict]:
+    n = len(values)
+    if n < _MIN_STAGE_SAMPLES:
+        return None
+    sv = sorted(values)
+    return {
+        "p50_seconds": sv[int(0.5 * n)],
+        "p90_seconds": sv[int(0.9 * n)],
+        "sample_size": n,
+    }
+
+
 def _percentile_stats(values: list) -> Optional[dict]:
     n = len(values)
     if n == 0:
@@ -101,7 +206,10 @@ def _percentile_stats(values: list) -> Optional[dict]:
 
 @router.get("/api/projects/{slug}/cycle_times")
 def get_cycle_times(slug: str, conn: sqlite3.Connection = Depends(db_dep)):
-    null_response = {"total_duration": None, "issue_lifetime": None, "pr_lifetime": None}
+    null_response: dict = {
+        "total_duration": None, "issue_lifetime": None, "pr_lifetime": None,
+        "stages": {}, "rework_rate": None,
+    }
     rows = conn.execute(
         """SELECT total_duration_seconds, issue_lifetime_seconds, pr_lifetime_seconds
            FROM pipeline_runs
@@ -110,8 +218,22 @@ def get_cycle_times(slug: str, conn: sqlite3.Connection = Depends(db_dep)):
         (slug,),
     ).fetchall()
 
+    by_issue = _load_label_transitions(conn, slug)
+
+    stage_buckets = _compute_stage_durations(by_issue)
+    stages: dict = {}
+    for key, durations in stage_buckets.items():
+        stats = _stage_percentile_stats(durations)
+        if stats is not None:
+            stages[key] = stats
+
+    rework_rate: Optional[float] = None
+    if by_issue:
+        reworked = sum(1 for evs in by_issue.values() if _detect_rework_for_run(evs))
+        rework_rate = round(reworked / len(by_issue), 4)
+
     if not rows:
-        return null_response
+        return {**null_response, "stages": stages, "rework_rate": rework_rate}
 
     total_vals = [r["total_duration_seconds"] for r in rows]
     issue_vals = [r["issue_lifetime_seconds"] for r in rows if r["issue_lifetime_seconds"] is not None]
@@ -121,4 +243,6 @@ def get_cycle_times(slug: str, conn: sqlite3.Connection = Depends(db_dep)):
         "total_duration": _percentile_stats(total_vals),
         "issue_lifetime": _percentile_stats(issue_vals) if issue_vals else None,
         "pr_lifetime": _percentile_stats(pr_vals) if pr_vals else None,
+        "stages": stages,
+        "rework_rate": rework_rate,
     }

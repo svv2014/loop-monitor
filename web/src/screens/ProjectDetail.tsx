@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import PrMonitorTable from '../components/PrMonitorTable';
-import type { Worker, FeedItem, PipelineRun, PRMonitorEntry } from '../lib/types';
+import type { Worker, FeedItem, PipelineRun, PRMonitorEntry, CycleTimesResponse, SloConfig } from '../lib/types';
+import { fetchCycleTimes, fetchSlo } from '../lib/api';
 
 interface IssueRollup {
   num: number;
@@ -58,6 +59,109 @@ function fmtDuration(secs: number | null): string {
   return m ? `${h}h ${m}m` : `${h}h`;
 }
 
+function Sparkline({ runs, slo }: { runs: PipelineRun[]; slo: SloConfig | null }) {
+  const pts = runs.filter(r => r.total_duration_seconds != null).slice(0, 7).reverse();
+  if (pts.length < 2) return null;
+  const vals = pts.map(r => r.total_duration_seconds as number);
+  const sloVal = slo?.total_seconds ?? null;
+  const allVals = sloVal != null ? [...vals, sloVal] : vals;
+  const min = Math.min(...allVals), max = Math.max(...allVals);
+  const range = max - min || 1;
+  const W = 80, H = 28, PAD = 3;
+  const pointsStr = vals.map((v, i) => {
+    const x = PAD + (i / (vals.length - 1)) * (W - PAD * 2);
+    const y = PAD + (1 - (v - min) / range) * (H - PAD * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const sloY = sloVal != null ? PAD + (1 - (sloVal - min) / range) * (H - PAD * 2) : null;
+  return (
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ display: 'block' }}>
+      <polyline points={pointsStr} fill="none" stroke="var(--accent2,#7c3aed)" strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
+      {sloY != null && (
+        <line x1={PAD} y1={sloY} x2={W - PAD} y2={sloY} stroke="var(--fail,#ef4444)" strokeWidth={0.75} strokeDasharray="2,1" />
+      )}
+      {vals.map((v, i) => {
+        if (sloVal == null || v <= sloVal) return null;
+        const x = PAD + (i / (vals.length - 1)) * (W - PAD * 2);
+        const y = PAD + (1 - (v - min) / range) * (H - PAD * 2);
+        return <circle key={i} cx={x} cy={y} r={1.5} fill="var(--fail,#ef4444)" />;
+      })}
+    </svg>
+  );
+}
+
+interface CycleTimePanelProps {
+  cycleTimes: CycleTimesResponse | null;
+  slo: SloConfig | null;
+  runs: PipelineRun[];
+}
+
+function CycleTimePanel({ cycleTimes, slo, runs }: CycleTimePanelProps) {
+  const total = cycleTimes?.total_duration;
+  const stages = cycleTimes?.stages ?? {};
+  const stageKeys = Object.keys(stages);
+  const reworkRate = cycleTimes?.rework_rate;
+
+  return (
+    <div className="panel">
+      <div className="panel-h">
+        <span>Cycle time</span>
+        {slo?.total_seconds != null && (
+          <span className="muted mono" style={{ fontSize: 11 }}>SLO: {fmtDuration(slo.total_seconds)}</span>
+        )}
+      </div>
+      <div style={{ padding: 'var(--pad-3) var(--pad-4)' }}>
+        {!total ? (
+          <div className="muted" style={{ fontSize: 12 }}>No completed runs yet</div>
+        ) : (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div>
+                <div className="muted" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Median</div>
+                <div className="num" style={{ fontSize: 18 }}>{fmtDuration(total.median_seconds)}</div>
+              </div>
+              <div>
+                <div className="muted" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.1em' }}>P90</div>
+                <div className="num" style={{ fontSize: 18 }}>{fmtDuration(total.p90_seconds)}</div>
+              </div>
+              <div>
+                <div className="muted" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Samples</div>
+                <div className="num muted" style={{ fontSize: 18 }}>{total.sample_size}</div>
+              </div>
+              {reworkRate != null && (
+                <div>
+                  <div className="muted" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Rework</div>
+                  <div className="num" style={{ fontSize: 18 }}>{Math.round(reworkRate * 100)}%</div>
+                </div>
+              )}
+              <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
+                <Sparkline runs={runs} slo={slo} />
+              </div>
+            </div>
+            {stageKeys.length > 0 && (
+              <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 6 }}>
+                {stageKeys.map(k => {
+                  const s = stages[k];
+                  return (
+                    <div key={k} style={{ background: 'var(--bg-2)', padding: '4px 8px' }}>
+                      <div className="muted mono" style={{ fontSize: 10, marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={k}>{k}</div>
+                      <div style={{ display: 'flex', gap: 8, fontSize: 11 }}>
+                        <span><span className="muted">P50 </span>{fmtDuration(s.p50_seconds)}</span>
+                        <span><span className="muted">P90 </span>{fmtDuration(s.p90_seconds)}</span>
+                        <span className="muted">n={s.sample_size}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function ProjectDetail({ projectId, allProjectIds, onBack, onProjectChange }: ProjectDetailProps) {
   const [runs, setRuns] = useState<PipelineRun[]>([]);
   const [prs, setPrs] = useState<PRMonitorEntry[]>([]);
@@ -66,6 +170,8 @@ export default function ProjectDetail({ projectId, allProjectIds, onBack, onProj
   const [prsLoading, setPrsLoading] = useState(true);
   const [prsError, setPrsError] = useState(false);
   const [includeFinishedPrs, setIncludeFinishedPrs] = useState(false);
+  const [cycleTimes, setCycleTimes] = useState<CycleTimesResponse | null>(null);
+  const [sloConfig, setSloConfig] = useState<SloConfig | null>(null);
 
   // Fetch runs
   useEffect(() => {
@@ -93,6 +199,18 @@ export default function ProjectDetail({ projectId, allProjectIds, onBack, onProj
       .then(r => r.ok ? r.json() : Promise.reject(r.status))
       .then((data: FeedItem[]) => setFeed(data.filter(e => e.project === projectId)))
       .catch(() => setFeed([]));
+  }, [projectId]);
+
+  // Fetch cycle times and SLO config
+  useEffect(() => {
+    setCycleTimes(null);
+    setSloConfig(null);
+    fetchCycleTimes(projectId)
+      .then(data => setCycleTimes(data))
+      .catch(() => setCycleTimes(null));
+    fetchSlo(projectId)
+      .then(data => setSloConfig(data))
+      .catch(() => setSloConfig(null));
   }, [projectId]);
 
   // Fetch active workers
@@ -277,6 +395,9 @@ export default function ProjectDetail({ projectId, allProjectIds, onBack, onProj
             </div>
           </div>
         </div>
+
+        {/* Cycle time + SLO panel */}
+        <CycleTimePanel cycleTimes={cycleTimes} slo={sloConfig} runs={runs} />
 
         {/* PR Monitor */}
         <PrMonitorTable

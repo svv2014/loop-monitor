@@ -96,6 +96,16 @@ MIGRATIONS = [
             WHERE pr_number IS NOT NULL
         """,
     ),
+    (
+        "0005_project_slos",
+        """CREATE TABLE IF NOT EXISTS project_slos (
+            slug TEXT PRIMARY KEY,
+            total_seconds INTEGER,
+            breach_grace_seconds INTEGER NOT NULL DEFAULT 3600,
+            updated_at INTEGER,
+            last_alerted_at INTEGER
+        )""",
+    ),
 ]
 
 
@@ -114,6 +124,9 @@ def _migration_already_applied(conn: sqlite3.Connection, version_id: str) -> boo
     if version_id == "0004_event_audit_indexes":
         indexes = {r[1] for r in conn.execute("SELECT type, name FROM sqlite_master WHERE type='index'")}
         return "idx_events_project_event_type_created_at" in indexes
+    if version_id == "0005_project_slos":
+        tables = {r[1] for r in conn.execute("SELECT type, name FROM sqlite_master WHERE type='table'")}
+        return "project_slos" in tables
     return False
 
 

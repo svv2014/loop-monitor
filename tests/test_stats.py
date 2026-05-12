@@ -90,7 +90,11 @@ def test_cycle_times_empty(isolated_client):
     resp = isolated_client.get("/api/projects/no-such-project/cycle_times")
     assert resp.status_code == 200
     data = resp.json()
-    assert data == {"total_duration": None, "issue_lifetime": None, "pr_lifetime": None}
+    assert data["total_duration"] is None
+    assert data["issue_lifetime"] is None
+    assert data["pr_lifetime"] is None
+    assert data["stages"] == {}
+    assert data["rework_rate"] is None
 
 
 def test_cycle_times_with_data(isolated_client):
