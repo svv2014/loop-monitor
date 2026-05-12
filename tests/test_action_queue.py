@@ -1,7 +1,10 @@
+import json
 import sqlite3
+from unittest.mock import MagicMock, patch
 
 import server
 import server.db
+import server.helpers.github as gh_helper
 
 
 def test_action_queue_empty(isolated_client):
@@ -157,3 +160,107 @@ def test_action_queue_threshold_seconds_field(isolated_client, monkeypatch):
     assert stuck_item is not None
     assert stuck_item["reason"] == "stuck_label"
     assert stuck_item["threshold_seconds"] is None
+
+
+# ── Failure-context endpoint ──────────────────────────────────────────────────
+
+_COMMENT_WITH_MARKER = json.dumps({
+    "excerpt": "ModuleNotFoundError: No module named 'boba_orchestrator'",
+    "model": "claude-opus-4-5",
+    "run_id": "run-abc123",
+    "retry_count": 2,
+    "timestamp": "2026-05-02T14:30:00Z",
+    "log_path": "/var/log/loop/boba-orchestrator.log",
+})
+
+_GH_COMMENT_BODY = (
+    "PO failed 2x.\n"
+    "<!-- failure-context -->\n"
+    + _COMMENT_WITH_MARKER + "\n"
+    "<!-- /failure-context -->\n"
+)
+
+
+def _make_gh_response(comments: list[dict]) -> str:
+    return json.dumps(comments)
+
+
+def test_failure_endpoint_no_comment(isolated_client, monkeypatch):
+    """Returns 200 with excerpt=null when no failure-context comment exists."""
+    gh_helper._FAILURE_CACHE.clear()
+
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    mock_result.stdout = _make_gh_response([
+        {"body": "Just a regular comment", "url": "https://gh/c/1", "created_at": "2026-05-01T10:00:00Z"},
+    ])
+
+    with patch("server.helpers.github.subprocess.run", return_value=mock_result):
+        resp = isolated_client.get("/api/action_queue/loop/issue/42/failure")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["excerpt"] is None
+    assert data["retry_count"] == 0
+    assert data["model"] is None
+
+
+def test_failure_endpoint_with_marker(isolated_client, monkeypatch):
+    """Returns parsed payload when a failure-context comment exists."""
+    gh_helper._FAILURE_CACHE.clear()
+
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    mock_result.stdout = _make_gh_response([
+        {"body": "some old comment", "url": "https://gh/c/1", "created_at": "2026-05-01T10:00:00Z"},
+        {"body": _GH_COMMENT_BODY, "url": "https://gh/c/2", "created_at": "2026-05-02T14:30:00Z"},
+    ])
+
+    with patch("server.helpers.github.subprocess.run", return_value=mock_result):
+        resp = isolated_client.get("/api/action_queue/loop/issue/42/failure")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["excerpt"] == "ModuleNotFoundError: No module named 'boba_orchestrator'"
+    assert data["model"] == "claude-opus-4-5"
+    assert data["run_id"] == "run-abc123"
+    assert data["retry_count"] == 2
+    assert data["timestamp"] == "2026-05-02T14:30:00Z"
+    assert data["log_path"] == "/var/log/loop/boba-orchestrator.log"
+    assert data["github_comment_url"] == "https://gh/c/2"
+
+
+def test_failure_endpoint_malformed_json_in_marker(isolated_client):
+    """Returns excerpt=null when the marker block contains invalid JSON."""
+    gh_helper._FAILURE_CACHE.clear()
+
+    bad_body = "<!-- failure-context -->\nnot-valid-json\n<!-- /failure-context -->"
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    mock_result.stdout = _make_gh_response([
+        {"body": bad_body, "url": "https://gh/c/3", "created_at": "2026-05-02T15:00:00Z"},
+    ])
+
+    with patch("server.helpers.github.subprocess.run", return_value=mock_result):
+        resp = isolated_client.get("/api/action_queue/loop/issue/99/failure")
+
+    assert resp.status_code == 200
+    assert resp.json()["excerpt"] is None
+
+
+def test_failure_endpoint_unknown_project(isolated_client):
+    """Returns empty payload (no GH call) for an unknown project slug."""
+    gh_helper._FAILURE_CACHE.clear()
+
+    with patch("server.helpers.github.subprocess.run") as mock_run:
+        resp = isolated_client.get("/api/action_queue/nonexistent-project/issue/1/failure")
+
+    assert resp.status_code == 200
+    assert resp.json()["excerpt"] is None
+    mock_run.assert_not_called()
+
+
+def test_failure_endpoint_invalid_kind(isolated_client):
+    """Returns 400 for kind values other than 'issue' or 'pr'."""
+    resp = isolated_client.get("/api/action_queue/loop/comment/42/failure")
+    assert resp.status_code == 400

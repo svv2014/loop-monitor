@@ -21,6 +21,7 @@ import type {
   ScannerState,
   LogsResponse,
   IssueCostRow,
+  FailureContext,
 } from './types';
 import * as fx from './fixtures';
 
@@ -148,6 +149,16 @@ export async function fetchIssuesCost(params: IssuesCostParams = {}): Promise<Is
   if (params.offset != null) p.set('offset', String(params.offset));
   const qs = p.size ? `?${p.toString()}` : '';
   return get<IssueCostRow[]>(`/api/issues/cost${qs}`);
+}
+
+export async function fetchFailureContext(
+  project: string,
+  kind: string,
+  number: number,
+): Promise<FailureContext> {
+  return get<FailureContext>(
+    `/api/action_queue/${encodeURIComponent(project)}/${encodeURIComponent(kind)}/${number}/failure`,
+  );
 }
 
 export class LogsDisabledError extends Error {
