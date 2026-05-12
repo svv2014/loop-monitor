@@ -114,10 +114,10 @@ def test_cycle_times_with_data(isolated_client):
     td = data["total_duration"]
     assert td is not None
     assert td["sample_size"] == 10
-    # sorted: [10,20,30,40,50,60,70,80,90,100]; floor(0.5*10)=5 → index 5 → 60
-    assert td["median_seconds"] == 60
-    # floor(0.9*10)=9 → index 9 → 100
-    assert td["p90_seconds"] == 100
+    # sorted: [10,20,30,40,50,60,70,80,90,100]; (10-1)//2=4 → index 4 → 50
+    assert td["median_seconds"] == 50
+    # ceil(0.9*10)=9, min(9,10)-1=8 → index 8 → 90
+    assert td["p90_seconds"] == 90
     # most_recent is the last inserted row
     assert td["most_recent_seconds"] == 100
 

@@ -1,3 +1,4 @@
+import math
 import sqlite3
 from typing import Optional
 
@@ -89,8 +90,8 @@ def _percentile_stats(values: list) -> Optional[dict]:
     if n == 0:
         return None
     sorted_vals = sorted(values)
-    median = sorted_vals[int(0.5 * n)]
-    p90 = sorted_vals[int(0.9 * n)]
+    median = sorted_vals[(n - 1) // 2]
+    p90 = sorted_vals[min(math.ceil(0.9 * n), n) - 1]
     return {
         "median_seconds": median,
         "p90_seconds": p90,
