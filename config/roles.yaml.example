@@ -1,0 +1,51 @@
+# loop-monitor — role / event vocabulary
+#
+# Defines the roles your pipeline uses (e.g. po, dev, qa) and how they appear
+# in the dashboard. Override these if your pipeline emits a different
+# vocabulary — e.g. build/test/deploy instead of po/dev/qa.
+#
+# How loop-monitor finds this file (in order):
+#   1. $LOOP_MONITOR_ROLES_CONFIG (absolute path)
+#   2. ./config/roles.yaml (relative to repo root)
+#   3. Fall back to the built-in Loop defaults (po, dev, qa, reviewer, merge, judge)
+#
+# Copy this file to `config/roles.yaml` and edit. The file is gitignored
+# so your operator-specific vocabulary stays out of version control.
+
+roles:
+  # Each role is a stage your pipeline reports through bounty events.
+  # Order matters — it determines display order in charts and filters.
+  - id: po              # short identifier — must match the `role` field your pipeline emits
+    label: PO           # display name in the UI
+    color: violet       # one of: violet, blue, cyan, amber, pink, green, indigo, red, gray
+  - id: dev
+    label: Dev
+    color: blue
+  - id: qa
+    label: QA
+    color: amber
+  - id: reviewer
+    label: Reviewer
+    color: pink
+  - id: merge
+    label: Merge
+    color: green
+  - id: judge
+    label: Judge
+    color: indigo
+
+# Example: a deploy-pipeline operator might use:
+#
+# roles:
+#   - id: lint
+#     label: Lint
+#     color: cyan
+#   - id: build
+#     label: Build
+#     color: blue
+#   - id: test
+#     label: Test
+#     color: amber
+#   - id: deploy
+#     label: Deploy
+#     color: green
