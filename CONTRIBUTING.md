@@ -1,7 +1,36 @@
 # Contributing to loop-monitor
 
 loop-monitor is the companion dashboard for [Loop](https://github.com/svv2014/loop).
-External contributions welcome.
+
+## Contribution policy
+
+**loop-monitor is currently developed via an autonomous pipeline tied to a single operator account.** We are not accepting external PRs at this time.
+
+This is not a comment on contribution quality — it reflects the project's governance model. loop-monitor is operator-driven: an autonomous AI pipeline (Loop) files issues, drafts specs, opens PRs, reviews them, and merges them. External PRs sit outside that loop and cost more to integrate than they save.
+
+If you found a bug or want a feature:
+
+1. **Open an issue** describing the problem or proposal. The autonomous pipeline will pick it up on the next scanner tick and either implement it or comment on why it's out of scope.
+2. **Fork freely.** The MIT license permits arbitrary reuse. If you want loop-monitor wired into your own infrastructure, the [reusability work](#fork-and-reuse) makes it straightforward — no source patching required for the common case.
+3. **Security issues** — use [GitHub Security Advisories](https://github.com/svv2014/loop-monitor/security/advisories/new). These are handled directly by the operator, outside the autonomous pipeline.
+
+PRs opened by external accounts will be politely closed with a pointer to this section. No reflection on the work.
+
+## Fork and reuse
+
+loop-monitor is designed to be deployed against any pipeline that emits the [bounty event API v1.0](#bounty-event-api-contract). To wire it to your own org:
+
+1. Fork or clone the repo
+2. Copy `config/projects.yaml.example` to `config/projects.yaml`
+3. Edit `config/projects.yaml` to list your projects (slug → `owner/repo`)
+4. Set `LOOP_MONITOR_PROJECTS_CONFIG` env var if you want to point at a different path
+5. Run
+
+No code changes needed. See the [README](README.md#configure-your-projects) for the full setup path.
+
+## For the operator (private notes)
+
+If you are the operator running the autonomous pipeline, the rest of this document describes the conventions the pipeline (and you, when you intervene manually) should follow.
 
 ## Quick rules
 
