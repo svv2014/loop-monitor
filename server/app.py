@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -43,7 +44,8 @@ app.include_router(issues_cost.router)
 app.include_router(logs.router)
 app.include_router(scanner_state.router)
 
-app.mount("/", StaticFiles(directory="static/dist", html=True), name="webapp")
+if os.path.isdir("static/dist"):
+    app.mount("/", StaticFiles(directory="static/dist", html=True), name="webapp")
 
 
 if __name__ == "__main__":
