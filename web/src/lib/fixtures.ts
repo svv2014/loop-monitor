@@ -348,9 +348,10 @@ export function getFixtureIssuesCost(): IssueCostRow[] {
     const p = pick(PROJECTS);
     const actual_runs = randInt(1, 12);
     const rework_factor = parseFloat((actual_runs / 5).toFixed(2));
+    const issue_number = randInt(10, 200);
     return {
       project: p.id,
-      issue_number: randInt(10, 200),
+      issue_number,
       priority: pick(PRIORITIES),
       state: pick(STATES),
       rework_factor,
@@ -358,6 +359,7 @@ export function getFixtureIssuesCost(): IssueCostRow[] {
       stranded_seconds: rand() > 0.4 ? randInt(0, 72 * 3600) : null,
       actual_runs,
       last_event_at: new Date(Date.now() - randInt(60, 7 * 86400) * 1000).toISOString(),
+      github_url: `https://github.com/${p.repo}/issues/${issue_number}`,
     };
   }).sort((a, b) => b.rework_factor - a.rework_factor || b.actual_runs - a.actual_runs);
 }
