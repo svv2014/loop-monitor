@@ -87,42 +87,41 @@ def get_runs_by_project(project: str, conn: sqlite3.Connection = Depends(db_dep)
 @router.get("/api/projects/{slug}/prs")
 def get_project_prs(slug: str, include_finished: bool = False, conn: sqlite3.Connection = Depends(db_dep)):
     """PR monitor: every PR seen by the pipeline with current stage and time-in-stage."""
-    finished_clause = "" if include_finished else " AND outcome IS NULL"
-    runs = conn.execute(
-        f"""SELECT issue_number, pr_number, title, outcome, completed_at, rework_count
-           FROM pipeline_runs
-           WHERE project=? AND pr_number IS NOT NULL{finished_clause}
-           ORDER BY id DESC""",
+    finished_clause = "" if include_finished else " AND pr.outcome IS NULL"
+    rows = conn.execute(
+        f"""SELECT pr.issue_number, pr.pr_number, pr.title, pr.outcome, pr.rework_count,
+                   e.event_type, e.created_at AS event_created_at, e.payload
+            FROM pipeline_runs pr
+            LEFT JOIN events e ON e.id = (
+                SELECT MAX(id) FROM events
+                WHERE project = pr.project
+                  AND (issue_number = pr.issue_number OR pr_number = pr.pr_number)
+            )
+            WHERE pr.project = ? AND pr.pr_number IS NOT NULL{finished_clause}
+            ORDER BY pr.id DESC""",
         (slug,),
     ).fetchall()
 
     repo = PROJECTS.get(slug)
     now = datetime.now(timezone.utc)
     result = []
-    for run in runs:
-        last_event = conn.execute(
-            """SELECT event_type, created_at, payload FROM events
-               WHERE project=? AND (issue_number=? OR pr_number=?)
-               ORDER BY id DESC LIMIT 1""",
-            (slug, run["issue_number"], run["pr_number"]),
-        ).fetchone()
-
+    for row in rows:
         stage = None
         last_event_type = None
         last_event_at = None
         time_in_stage = None
         branch = None
         is_draft = None
-        if last_event:
-            last_event_type = last_event["event_type"]
-            last_event_at = last_event["created_at"]
+        if row["event_type"] is not None:
+            last_event_type = row["event_type"]
+            last_event_at = row["event_created_at"]
             stage = _derive_stage(last_event_type)
             ts = parse_ts(last_event_at)
             if ts is not None:
                 time_in_stage = int((now - ts).total_seconds())
-            if last_event["payload"]:
+            if row["payload"]:
                 try:
-                    p = json.loads(last_event["payload"])
+                    p = json.loads(row["payload"])
                     if isinstance(p, dict):
                         branch = p.get("branch")
                         if "draft" in p:
@@ -130,19 +129,19 @@ def get_project_prs(slug: str, include_finished: bool = False, conn: sqlite3.Con
                 except Exception:
                     pass
 
-        github_url = f"https://github.com/{repo}/pull/{run['pr_number']}" if repo else None
+        github_url = f"https://github.com/{repo}/pull/{row['pr_number']}" if repo else None
 
         result.append({
-            "pr_number": run["pr_number"],
-            "title": run["title"],
+            "pr_number": row["pr_number"],
+            "title": row["title"],
             "branch": branch,
             "stage": stage,
             "time_in_stage_seconds": time_in_stage,
-            "retry_count": run["rework_count"] or 0,
+            "retry_count": row["rework_count"] or 0,
             "last_event": last_event_type,
             "last_event_at": last_event_at,
             "github_url": github_url,
-            "is_finished": run["outcome"] is not None,
+            "is_finished": row["outcome"] is not None,
             "is_draft": is_draft,
         })
 
