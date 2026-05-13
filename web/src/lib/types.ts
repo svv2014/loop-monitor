@@ -251,4 +251,5 @@ export interface IssueCostRow {
   stranded_seconds: number | null;
   actual_runs: number;
   last_event_at: string | null;
+  github_url: string | null;
 }

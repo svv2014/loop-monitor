@@ -117,7 +117,7 @@ export default function Logs() {
           fontSize: 12,
           color: 'var(--warn)',
         }}>
-          WARNING: {handler} log appears orphaned (FD {fmtBytes(data.fd_bytes)}, file {fmtBytes(data.on_disk_bytes)}). See svv2014/loop#194.
+          WARNING: {handler} log appears orphaned (FD {fmtBytes(data.fd_bytes)}, file {fmtBytes(data.on_disk_bytes)}). The handler may have rotated or replaced its log file while the dashboard kept reading the old descriptor — restart the handler to re-attach.
         </div>
       )}
 
