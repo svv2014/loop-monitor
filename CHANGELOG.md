@@ -16,7 +16,15 @@ screen), 4.1 (loop selector + version badge) and various reliability
 panels are landed or in flight. v0.3.0 will cut after the migration
 completes.
 
+### BREAKING
+- [LM-123] `/` now serves the React UI (built from `web/` into `static/dist/`); the
+  previous vanilla-JS `static/index.html` is deleted.
+- `/v2` mount is removed; it was the React preview route. Any bookmark
+  targeting `/v2/...` will now 404.
+- Legacy `static/js/**` (ES-module vanilla-JS bundle) deleted.
+
 ### Changed
+- [LM-123] Phase 5 · Cutover — React UI promoted to `/`; legacy static files removed (#205)
 - [LM-115] Phase 2 · API client, transforms, fixture mode (#151)
 - [LM-126] fix db connection leak — add db_dep() FastAPI dependency + try/finally for bg tasks (#189)
 

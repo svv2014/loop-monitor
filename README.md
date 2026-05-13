@@ -230,8 +230,16 @@ Env vars: `LOOP_MONITOR_URL` (default `http://localhost:18792`), `LOOP_WATCH_REP
 
 ```bash
 pip install -r requirements.txt
+# Build the React UI into static/dist/ before starting the server
+cd web && npm run build && cd ..
 uvicorn server.app:app --host 127.0.0.1 --port 18792 --reload
 pytest tests/
+```
+
+For hot-module reload during UI development:
+
+```bash
+cd web && npm run dev   # Vite dev server with HMR (proxies /api to :18792)
 ```
 
 ## Versioning
