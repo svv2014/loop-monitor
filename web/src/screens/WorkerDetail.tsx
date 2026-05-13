@@ -181,7 +181,7 @@ export default function WorkerDetail() {
                   ['Total events', String(selected.events)],
                   ['Roles',        Array.from(selected.roles).join(', ')],
                   ['QA fails',     String(selected.fails)],
-                  ['Last seen',    relTime(selected.lastIso, selected.lastAge) + ' ago'],
+                  ['Last seen',    relTime(selected.lastIso, selected.lastAge)],
                 ] as [string, string][]).map(([k, v]) => (
                   <div key={k} style={{ background: 'var(--bg-1)', padding: 'var(--pad-3)' }}>
                     <div className="mono" style={{
