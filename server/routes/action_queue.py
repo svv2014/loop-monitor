@@ -1,3 +1,4 @@
+import json
 import os
 import sqlite3
 from datetime import datetime, timezone
@@ -12,28 +13,92 @@ from server.helpers.timeline import parse_ts
 
 router = APIRouter()
 
-STUCK_STAGES = {"blocked", "needs-clarification"}
-TIMEOUT_STAGES = {"in-progress", "in-review", "in-rework", "needs-qa", "needs-review", "ready-for-qa"}
-QA_FAIL_STAGE = "qa-fail"
+STUCK_STAGES = {"blocked", "needs-clarification", "loop:result:blocked"}
+TIMEOUT_STAGES = {
+    "in-dev", "in-review", "in-qa",
+    "loop:active:dev", "loop:active:review", "loop:active:qa",
+    "needs-review", "needs-qa", "needs-dev",
+    "loop:action:review", "loop:action:qa", "loop:action:dev",
+}
+QA_FAIL_STAGES = {"qa-fail", "loop:result:qa-fail"}
 QA_FAIL_RETRY_THRESHOLD = 3
 
 STAGE_THRESHOLD_ENV = {
-    "in-progress":  "HANDLER_TIMEOUT_DEV",
-    "in-rework":    "HANDLER_TIMEOUT_DEV",
-    "in-review":    "HANDLER_TIMEOUT_REVIEW",
-    "needs-review": "HANDLER_TIMEOUT_REVIEW",
-    "needs-qa":     "HANDLER_TIMEOUT_QA",
-    "ready-for-qa": "HANDLER_TIMEOUT_QA",
+    # dev-phase canonical + loop:* aliases
+    "in-dev":             "HANDLER_TIMEOUT_DEV",
+    "needs-dev":          "HANDLER_TIMEOUT_DEV",
+    "loop:active:dev":    "HANDLER_TIMEOUT_DEV",
+    "loop:action:dev":    "HANDLER_TIMEOUT_DEV",
+    # review-phase canonical + loop:* aliases
+    "in-review":          "HANDLER_TIMEOUT_REVIEW",
+    "needs-review":       "HANDLER_TIMEOUT_REVIEW",
+    "loop:active:review": "HANDLER_TIMEOUT_REVIEW",
+    "loop:action:review": "HANDLER_TIMEOUT_REVIEW",
+    # qa-phase canonical + loop:* aliases
+    "in-qa":              "HANDLER_TIMEOUT_QA",
+    "needs-qa":           "HANDLER_TIMEOUT_QA",
+    "loop:active:qa":     "HANDLER_TIMEOUT_QA",
+    "loop:action:qa":     "HANDLER_TIMEOUT_QA",
 }
 
 STAGE_DEFAULTS = {
-    "in-progress":  7200,
-    "in-rework":    7200,
-    "in-review":    1800,
-    "needs-review": 1800,
-    "needs-qa":     3600,
-    "ready-for-qa": 3600,
+    "in-dev":             7200,
+    "needs-dev":          7200,
+    "loop:active:dev":    7200,
+    "loop:action:dev":    7200,
+    "in-review":          1800,
+    "needs-review":       1800,
+    "loop:active:review": 1800,
+    "loop:action:review": 1800,
+    "in-qa":              3600,
+    "needs-qa":           3600,
+    "loop:active:qa":     3600,
+    "loop:action:qa":     3600,
 }
+
+_ALL_KNOWN_STAGES = STUCK_STAGES | TIMEOUT_STAGES | QA_FAIL_STAGES
+
+_INFERENCE_MAP: dict[str, Optional[str]] = {
+    "dev_start":      "in-dev",
+    "rework_start":   "in-dev",
+    "review_start":   "in-review",
+    "qa_start":       "in-qa",
+    "qa_fail":        "qa-fail",
+    "po_done":        "needs-dev",
+    "dev_done":       "needs-review",
+    "rework_done":    "needs-review",
+    "review_done":    "needs-qa",
+    "qa_pass":        None,
+    "merge_done":     None,
+    "po_failed":      "blocked",
+    "dev_failed":     "blocked",
+    "review_failed":  "blocked",
+    "merge_failed":   "blocked",
+    "merge_conflict": "blocked",
+    "rework_failed":  "blocked",
+}
+
+
+def _infer_stage(role: str, event_type: str, payload: Optional[str] = None) -> Optional[str]:
+    """Map the latest event for a ticket to a canonical stage label.
+
+    Temporary stop-gap; superseded once the `current_labels` table lands (see Option 1 in #221).
+
+    Returns None for events that imply no action is needed (work finished or unknown state).
+    """
+    if event_type == "label_transition":
+        if payload:
+            try:
+                p = json.loads(payload) if isinstance(payload, str) else payload
+                after_labels = p.get("after_labels", [])
+                for label in after_labels:
+                    if label in _ALL_KNOWN_STAGES:
+                        return label
+            except (json.JSONDecodeError, AttributeError, TypeError):
+                pass
+        # TODO(#221): wire once payload schema settles
+        return None
+    return _INFERENCE_MAP.get(event_type)
 
 
 def _handler_timeout_seconds() -> int:
@@ -61,7 +126,7 @@ def _action_queue_reason(
         return "stuck_label"
     if stage in TIMEOUT_STAGES and age_seconds > threshold:
         return "timeout"
-    if stage == QA_FAIL_STAGE and retry_count >= QA_FAIL_RETRY_THRESHOLD:
+    if stage in QA_FAIL_STAGES and retry_count >= QA_FAIL_RETRY_THRESHOLD:
         return "qa_fail_repeated"
     return None
 
@@ -75,7 +140,7 @@ def action_queue(conn: sqlite3.Connection = Depends(db_dep)):
     rows = conn.execute(
         """
         SELECT e.project, e.role, e.event_type, e.issue_number, e.pr_number,
-               e.detail, e.loop_id, e.created_at,
+               e.detail, e.payload, e.loop_id, e.created_at,
                COALESCE(h.rework_count, 0) AS rework_count,
                COALESCE(r.title, '') AS title
         FROM events e
@@ -105,7 +170,9 @@ def action_queue(conn: sqlite3.Connection = Depends(db_dep)):
     now = datetime.now(timezone.utc)
     result = []
     for r in rows:
-        stage = (r["event_type"] or "").lower()
+        stage = _infer_stage(r["role"] or "", r["event_type"] or "", r["payload"])
+        if stage is None:
+            continue
         created = parse_ts(r["created_at"])
         age_seconds = int((now - created).total_seconds()) if created else 0
         threshold = _threshold_for_stage(stage)
