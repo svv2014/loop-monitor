@@ -1,4 +1,5 @@
 import sqlite3
+from unittest.mock import patch
 
 import pytest
 
@@ -76,3 +77,27 @@ def test_migration_rolls_back_on_mid_script_failure(tmp_path, monkeypatch):
     ).fetchone()
     assert applied is None, "schema_migrations should not have the failed version"
     conn.close()
+
+
+def test_migration_failure_closes_connection(tmp_path, monkeypatch):
+    db_path = str(tmp_path / "leak_test.db")
+    monkeypatch.setattr(server.db, "DB_PATH", db_path)
+    monkeypatch.setattr(server.db, "MIGRATIONS", [("9999_bad", "INVALID SQL HERE")])
+    monkeypatch.setattr(server.db, "_migration_already_applied", lambda c, v: False)
+
+    close_calls: list[bool] = []
+    real_connect = sqlite3.connect
+
+    class _TrackingConn(sqlite3.Connection):
+        def close(self) -> None:
+            close_calls.append(True)
+            super().close()
+
+    def spy_connect(path: str) -> sqlite3.Connection:
+        return real_connect(path, factory=_TrackingConn)  # type: ignore[call-arg]
+
+    with patch("server.db.sqlite3.connect", side_effect=spy_connect):
+        with pytest.raises(sqlite3.OperationalError):
+            server.db.apply_pending_migrations()
+
+    assert close_calls, "conn.close() must be called even when a migration raises"
