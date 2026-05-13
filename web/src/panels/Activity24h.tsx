@@ -1,12 +1,12 @@
 import type { HourBucket } from '../lib/transforms';
-
-const ROLE_ORDER = ['po', 'dev', 'qa', 'reviewer', 'merge', 'judge'] as const;
+import { useRoleIds } from '../lib/useRoles';
 
 interface Activity24hProps {
   buckets: HourBucket[];
 }
 
 export default function Activity24h({ buckets }: Activity24hProps) {
+  const roleOrder = useRoleIds();
   const max = Math.max(1, ...buckets.map(b => b.total));
 
   return (
@@ -14,7 +14,7 @@ export default function Activity24h({ buckets }: Activity24hProps) {
       <div className="panel-h">
         <span>24h pipeline activity</span>
         <span className="muted">
-          {ROLE_ORDER.map(r => (
+          {roleOrder.map(r => (
             <span key={r} style={{ marginLeft: 12 }}>
               <span style={{
                 display: 'inline-block',
@@ -32,7 +32,7 @@ export default function Activity24h({ buckets }: Activity24hProps) {
         <div className="bars">
           {buckets.map((b, i) => (
             <div key={i} className="bar-col">
-              {ROLE_ORDER.map(r => {
+              {roleOrder.map(r => {
                 const v = b.counts[r] ?? 0;
                 if (!v) return null;
                 return (

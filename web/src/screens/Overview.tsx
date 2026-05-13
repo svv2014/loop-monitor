@@ -14,12 +14,15 @@ import RoleTag from '../components/RoleTag';
 import { relTime, durationFmt } from '../lib/utils';
 import Charts from '../panels/Charts';
 import ClaudeUsage from '../panels/ClaudeUsage';
+import { useRoleIds } from '../lib/useRoles';
 
 const COMPLETED_TYPES = new Set([
   'merge_done', 'judge_done', 'review_done', 'dev_done', 'po_done',
 ]);
 
 export default function Overview() {
+  const roleIds = useRoleIds();
+
   const { data: workers = [] } = useQuery({
     queryKey: ['active'],
     queryFn: () => fetchActive(),
@@ -68,8 +71,8 @@ export default function Overview() {
       }
       return buckets;
     }
-    return build24hBuckets(history as (LoopEvent & { ts?: number })[]);
-  }, [eventsGraph, history]);
+    return build24hBuckets(history as (LoopEvent & { ts?: number })[], roleIds);
+  }, [eventsGraph, history, roleIds]);
 
   const projects = useMemo(
     () => buildProjectStatus(
