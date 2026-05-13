@@ -1,20 +1,42 @@
 # Contributing to loop-monitor
 
-loop-monitor is the companion dashboard for [Loop](https://github.com/svv2014/loop).
+loop-monitor is the dashboard layer for autonomous CI/CD pipelines. It is **operator-driven**: developed by an autonomous AI pipeline (Loop) tied to a single account that files issues, drafts specs, opens PRs, reviews, and merges. External contributions are welcome under a **review gate** so the operator can vet each one before it lands.
 
-## Contribution policy
+## How external PRs work
 
-**loop-monitor is currently developed via an autonomous pipeline tied to a single operator account.** We are not accepting external PRs at this time.
+| Step | Who | What |
+|---|---|---|
+| 1. Open | You | Fork → branch → push → open PR against `main` |
+| 2. Triage | Operator | Within ~48h the PR gets labeled `external-pr` + `needs-triage`. The operator reads the diff and either requests changes, approves, or closes with explanation. |
+| 3. Iterate | You | Address feedback by pushing commits to your branch; comment when ready for re-review. |
+| 4. Approval | Operator | Once the code is acceptable, the operator applies the `operator-approved` label. CI runs; the PR enters the merge queue. |
+| 5. Merge | Operator | Merge happens manually — external PRs are **never auto-merged**, even with green CI. |
 
-This is not a comment on contribution quality — it reflects the project's governance model. loop-monitor is operator-driven: an autonomous AI pipeline (Loop) files issues, drafts specs, opens PRs, reviews them, and merges them. External PRs sit outside that loop and cost more to integrate than they save.
+The autonomous pipeline ignores PRs lacking `operator-approved`, so drive-by spam sits harmlessly until triage.
 
-If you found a bug or want a feature:
+## What we look for
 
-1. **Open an issue** describing the problem or proposal. The autonomous pipeline will pick it up on the next scanner tick and either implement it or comment on why it's out of scope.
-2. **Fork freely.** The MIT license permits arbitrary reuse. If you want loop-monitor wired into your own infrastructure, the [reusability work](#fork-and-reuse) makes it straightforward — no source patching required for the common case.
-3. **Security issues** — use [GitHub Security Advisories](https://github.com/svv2014/loop-monitor/security/advisories/new). These are handled directly by the operator, outside the autonomous pipeline.
+- Solves a real issue — include `Closes #N` in the body, link to the issue
+- One concern per PR — don't bundle unrelated changes
+- Tests covering the new behavior
+- No unrelated reformatting / refactors
+- Adheres to `design/DESIGN_STANDARDS.md` for any UI changes
+- Doesn't break the **bounty event API v1.0** contract without bumping the API version
 
-PRs opened by external accounts will be politely closed with a pointer to this section. No reflection on the work.
+## What gets closed
+
+- Drive-by reformatting / dependency bumps without context
+- Large refactors of areas the autonomous pipeline is actively working on
+- Duplicates of issues already in the pipeline (check open issues + PRs first)
+- Work requiring ongoing maintenance from the operator (heuristics, integrations with external services, etc.) unless discussed in an issue first
+
+## Reporting a bug or feature without a PR
+
+You don't have to write code. Open an issue describing the problem or proposal — the autonomous pipeline picks up labeled issues on the next scanner tick and either implements it or comments on why it's out of scope. Often this is faster than waiting for the operator to triage an external PR.
+
+## Security issues
+
+**Do not** open public PRs or issues for security problems. Use [GitHub Security Advisories](https://github.com/svv2014/loop-monitor/security/advisories/new) — these go directly to the operator, outside the autonomous pipeline.
 
 ## Fork and reuse
 
