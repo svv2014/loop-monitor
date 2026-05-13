@@ -19,10 +19,12 @@ def test_fresh_db_applies_all_migrations(tmp_path, monkeypatch):
         "0002_add_loop_id",
         "0003_add_pipeline_run_cols",
         "0004_event_audit_indexes",
+        "0005_project_slos",
     ]
     conn = sqlite3.connect(db_path)
     event_cols = {r[1] for r in conn.execute("PRAGMA table_info(events)")}
     run_cols = {r[1] for r in conn.execute("PRAGMA table_info(pipeline_runs)")}
+    slo_cols = {r[1] for r in conn.execute("PRAGMA table_info(project_slos)")}
     indexes = {r[1] for r in conn.execute("SELECT type, name FROM sqlite_master WHERE type='index'")}
     conn.close()
     assert "loop_id" in event_cols
@@ -32,6 +34,10 @@ def test_fresh_db_applies_all_migrations(tmp_path, monkeypatch):
     assert "idx_events_project_event_type_created_at" in indexes
     assert "idx_events_project_issue_created_at" in indexes
     assert "idx_events_project_pr_created_at" in indexes
+    assert "slug" in slo_cols
+    assert "total_seconds" in slo_cols
+    assert "breach_grace_seconds" in slo_cols
+    assert "last_alerted_at" in slo_cols
 
 
 def test_apply_pending_migrations_idempotent(tmp_path, monkeypatch):
@@ -48,6 +54,7 @@ def test_apply_pending_migrations_idempotent(tmp_path, monkeypatch):
         "0002_add_loop_id",
         "0003_add_pipeline_run_cols",
         "0004_event_audit_indexes",
+        "0005_project_slos",
     ]
 
 

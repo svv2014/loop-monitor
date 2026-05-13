@@ -22,6 +22,8 @@ import type {
   LogsResponse,
   IssueCostRow,
   FailureContext,
+  CycleTimesResponse,
+  SloConfig,
 } from './types';
 import * as fx from './fixtures';
 
@@ -159,6 +161,24 @@ export async function fetchFailureContext(
   return get<FailureContext>(
     `/api/action_queue/${encodeURIComponent(project)}/${encodeURIComponent(kind)}/${number}/failure`,
   );
+}
+
+export async function fetchCycleTimes(project: string): Promise<CycleTimesResponse> {
+  return get<CycleTimesResponse>(`/api/projects/${encodeURIComponent(project)}/cycle_times`);
+}
+
+export async function fetchSlo(project: string): Promise<SloConfig> {
+  return get<SloConfig>(`/api/projects/${encodeURIComponent(project)}/slo`);
+}
+
+export async function putSlo(project: string, body: { total_seconds: number | null; breach_grace_seconds: number }): Promise<SloConfig> {
+  const res = await fetch(`/api/projects/${encodeURIComponent(project)}/slo`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.json() as Promise<SloConfig>;
 }
 
 export class LogsDisabledError extends Error {

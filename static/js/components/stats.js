@@ -1,11 +1,13 @@
 import { escHtml, eventEmoji, fmtDur, timeAgo, timelineLink, durFromIso } from '/js/utils.js';
 import { activeWorkers, statusEntries, projectScores } from '/js/state.js';
 
-function renderSparkline(runs) {
+function renderSparklineWithSlo(runs, slo) {
   const pts = (runs || []).filter(r => r.total_duration_seconds != null).slice(0, 7).reverse();
   if (pts.length < 2) return '';
   const vals = pts.map(r => r.total_duration_seconds);
-  const min = Math.min(...vals), max = Math.max(...vals);
+  const sloVal = slo && slo.total_seconds ? slo.total_seconds : null;
+  const allVals = sloVal != null ? [...vals, sloVal] : vals;
+  const min = Math.min(...allVals), max = Math.max(...allVals);
   const range = max - min || 1;
   const W = 60, H = 24, PAD = 2;
   const points = vals.map((v, i) => {
@@ -13,16 +15,30 @@ function renderSparkline(runs) {
     const y = PAD + (1 - (v - min) / range) * (H - PAD * 2);
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(' ');
-  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;margin-top:4px"><polyline points="${points}" fill="none" stroke="var(--accent2)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+  const dotsHtml = vals.map((v, i) => {
+    if (sloVal == null || v <= sloVal) return '';
+    const x = PAD + (i / (vals.length - 1)) * (W - PAD * 2);
+    const y = PAD + (1 - (v - min) / range) * (H - PAD * 2);
+    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.5" fill="var(--red,#ef4444)"/>`;
+  }).join('');
+  const sloLineHtml = sloVal != null ? (() => {
+    const y = PAD + (1 - (sloVal - min) / range) * (H - PAD * 2);
+    return `<line x1="${PAD}" y1="${y.toFixed(1)}" x2="${W - PAD}" y2="${y.toFixed(1)}" stroke="var(--red,#ef4444)" stroke-width="0.75" stroke-dasharray="2,1"/>`;
+  })() : '';
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;margin-top:4px"><polyline points="${points}" fill="none" stroke="var(--accent2)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>${sloLineHtml}${dotsHtml}</svg>`;
 }
 
 async function fetchAndRenderCycleTime(proj) {
   const panel = document.querySelector(`.agent-card[data-proj="${CSS.escape(proj)}"] .cycle-time-panel`);
   if (!panel) return;
   try {
-    const res = await fetch(`/api/projects/${encodeURIComponent(proj)}/cycle_times`);
-    if (!res.ok) throw new Error('failed');
-    const data = await res.json();
+    const [ctRes, sloRes] = await Promise.all([
+      fetch(`/api/projects/${encodeURIComponent(proj)}/cycle_times`),
+      fetch(`/api/projects/${encodeURIComponent(proj)}/slo`),
+    ]);
+    if (!ctRes.ok) throw new Error('failed');
+    const data = await ctRes.json();
+    const slo = sloRes.ok ? await sloRes.json() : null;
     const total = data.total_duration;
     if (!total || !total.sample_size) {
       panel.innerHTML = '<span style="color:var(--muted)">—</span>';
@@ -33,9 +49,25 @@ async function fetchAndRenderCycleTime(proj) {
     const label  = `median: ${median} · P90: ${p90} · (last ${total.sample_size} runs)`;
     const runsRes  = await fetch(`/api/runs/${encodeURIComponent(proj)}`);
     const runsData = runsRes.ok ? await runsRes.json() : [];
-    const spark    = renderSparkline(runsData);
+    const spark    = renderSparklineWithSlo(runsData, slo);
+
+    const stages = data.stages || {};
+    const stageKeys = Object.keys(stages);
+    const stagesHtml = stageKeys.length
+      ? `<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">${
+          stageKeys.map(k => {
+            const s = stages[k];
+            return `<span title="${escHtml(k)}: P50=${fmtDur(s.p50_seconds)}, P90=${fmtDur(s.p90_seconds)}, n=${s.sample_size}" style="font-size:0.65rem;color:var(--muted);background:var(--bg-2);padding:1px 4px">${escHtml(k)}: ${fmtDur(s.p50_seconds)}/${fmtDur(s.p90_seconds)}</span>`;
+          }).join('')
+        }</div>`
+      : '';
+
+    const reworkHtml = data.rework_rate != null
+      ? `<div style="font-size:0.65rem;color:var(--muted);margin-top:2px">rework: ${Math.round(data.rework_rate * 100)}%</div>`
+      : '';
+
     panel.innerHTML =
-      `<span title="Median time from first event to completion, last ${total.sample_size} runs" style="color:var(--muted)">${escHtml(label)}</span>${spark}`;
+      `<span title="Median time from first event to completion, last ${total.sample_size} runs" style="color:var(--muted)">${escHtml(label)}</span>${spark}${stagesHtml}${reworkHtml}`;
   } catch {
     panel.innerHTML = '<span style="color:var(--muted)">—</span>';
   }

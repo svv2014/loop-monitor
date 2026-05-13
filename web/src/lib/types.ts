@@ -213,6 +213,34 @@ export interface FailureContext {
   log_path: string | null;
 }
 
+export interface StageStat {
+  p50_seconds: number;
+  p90_seconds: number;
+  sample_size: number;
+}
+
+export interface PercentileStat {
+  median_seconds: number;
+  p90_seconds: number;
+  sample_size: number;
+  most_recent_seconds: number;
+}
+
+export interface CycleTimesResponse {
+  total_duration: PercentileStat | null;
+  issue_lifetime: PercentileStat | null;
+  pr_lifetime: PercentileStat | null;
+  stages: Record<string, StageStat>;
+  rework_rate: number | null;
+}
+
+export interface SloConfig {
+  slug: string;
+  total_seconds: number | null;
+  breach_grace_seconds: number;
+  updated_at: number | null;
+}
+
 export interface IssueCostRow {
   project: string;
   issue_number: number;
