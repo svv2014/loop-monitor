@@ -13,9 +13,11 @@ def test_action_queue_empty(isolated_client):
     assert resp.json() == []
 
 
-def test_action_queue_blocked_label(isolated_client):
+def test_action_queue_blocked_label(isolated_client, monkeypatch):
+    # dev_failed → inferred stage = "blocked"
+    monkeypatch.setitem(server.PROJECTS, "boba-event", "svv2014/boba-event")
     server._insert_event(server.ReportPayload(
-        project="boba-event", role="dev", event_type="blocked", issue_number=42,
+        project="boba-event", role="dev", event_type="dev_failed", issue_number=42,
         detail="needs human"
     ))
     resp = isolated_client.get("/api/action_queue")
@@ -31,8 +33,17 @@ def test_action_queue_blocked_label(isolated_client):
 
 
 def test_action_queue_needs_clarification(isolated_client):
+    # label_transition with after_labels containing "needs-clarification"
     server._insert_event(server.ReportPayload(
-        project="loop", role="dev", event_type="needs-clarification", issue_number=7
+        project="loop", role="dev", event_type="label_transition", issue_number=7,
+        payload={
+            "target_kind": "issue",
+            "number": 7,
+            "before_labels": [],
+            "after_labels": ["needs-clarification"],
+            "op": "add",
+            "source": "loop",
+        }
     ))
     resp = isolated_client.get("/api/action_queue")
     data = resp.json()
@@ -41,8 +52,9 @@ def test_action_queue_needs_clarification(isolated_client):
 
 def test_action_queue_timeout_threshold(isolated_client, monkeypatch):
     monkeypatch.setenv("HANDLER_TIMEOUT_DEV", "200")
+    # dev_start → inferred stage = "in-dev"
     server._insert_event(server.ReportPayload(
-        project="loop", role="dev", event_type="in-progress", issue_number=11
+        project="loop", role="dev", event_type="dev_start", issue_number=11
     ))
     # backdate created_at to 300s ago — exceeds 200s threshold
     conn = sqlite3.connect(server.db.DB_PATH)
@@ -55,14 +67,15 @@ def test_action_queue_timeout_threshold(isolated_client, monkeypatch):
     data = resp.json()
     timeout_items = [it for it in data if it["reason"] == "timeout" and it["number"] == 11]
     assert len(timeout_items) == 1
-    assert timeout_items[0]["stage"] == "in-progress"
+    assert timeout_items[0]["stage"] == "in-dev"
     assert timeout_items[0]["age_seconds"] >= 200
 
 
 def test_action_queue_in_progress_below_threshold_excluded(isolated_client, monkeypatch):
     monkeypatch.setenv("HANDLER_TIMEOUT_DEV", "3600")
+    # dev_start → "in-dev"; below threshold so excluded
     server._insert_event(server.ReportPayload(
-        project="loop", role="dev", event_type="in-progress", issue_number=13
+        project="loop", role="dev", event_type="dev_start", issue_number=13
     ))
     resp = isolated_client.get("/api/action_queue")
     data = resp.json()
@@ -71,11 +84,12 @@ def test_action_queue_in_progress_below_threshold_excluded(isolated_client, monk
 
 def test_action_queue_sorted_by_age_desc(isolated_client, monkeypatch):
     monkeypatch.setenv("HANDLER_TIMEOUT_DEV", "100")
+    # dev_failed → "blocked" (stuck, always surfaces)
     server._insert_event(server.ReportPayload(
-        project="loop", role="dev", event_type="blocked", issue_number=200
+        project="loop", role="dev", event_type="dev_failed", issue_number=200
     ))
     server._insert_event(server.ReportPayload(
-        project="loop", role="dev", event_type="blocked", issue_number=201
+        project="loop", role="dev", event_type="dev_failed", issue_number=201
     ))
     conn = sqlite3.connect(server.db.DB_PATH)
     conn.execute(
@@ -91,8 +105,9 @@ def test_action_queue_sorted_by_age_desc(isolated_client, monkeypatch):
 
 def test_action_queue_per_stage_threshold_dev_override(isolated_client, monkeypatch):
     monkeypatch.setenv("HANDLER_TIMEOUT_DEV", "500")
+    # dev_start → "in-dev"
     server._insert_event(server.ReportPayload(
-        project="loop", role="dev", event_type="in-progress", issue_number=300
+        project="loop", role="dev", event_type="dev_start", issue_number=300
     ))
     conn = sqlite3.connect(server.db.DB_PATH)
     conn.execute(
@@ -109,8 +124,9 @@ def test_action_queue_per_stage_threshold_dev_override(isolated_client, monkeypa
 
 def test_action_queue_needs_qa_past_threshold(isolated_client, monkeypatch):
     monkeypatch.setenv("HANDLER_TIMEOUT_QA", "60")
+    # review_done → "needs-qa"
     server._insert_event(server.ReportPayload(
-        project="loop", role="dev", event_type="needs-qa", issue_number=301
+        project="loop", role="dev", event_type="review_done", issue_number=301
     ))
     conn = sqlite3.connect(server.db.DB_PATH)
     conn.execute(
@@ -128,8 +144,9 @@ def test_action_queue_needs_qa_past_threshold(isolated_client, monkeypatch):
 
 def test_action_queue_needs_qa_under_threshold_excluded(isolated_client, monkeypatch):
     monkeypatch.setenv("HANDLER_TIMEOUT_QA", "3600")
+    # review_done → "needs-qa"; below threshold so excluded
     server._insert_event(server.ReportPayload(
-        project="loop", role="dev", event_type="needs-qa", issue_number=302
+        project="loop", role="dev", event_type="review_done", issue_number=302
     ))
     resp = isolated_client.get("/api/action_queue")
     data = resp.json()
@@ -138,11 +155,12 @@ def test_action_queue_needs_qa_under_threshold_excluded(isolated_client, monkeyp
 
 def test_action_queue_threshold_seconds_field(isolated_client, monkeypatch):
     monkeypatch.setenv("HANDLER_TIMEOUT_QA", "60")
+    # review_done → "needs-qa"; dev_failed → "blocked"
     server._insert_event(server.ReportPayload(
-        project="loop", role="dev", event_type="needs-qa", issue_number=303
+        project="loop", role="dev", event_type="review_done", issue_number=303
     ))
     server._insert_event(server.ReportPayload(
-        project="loop", role="dev", event_type="blocked", issue_number=304
+        project="loop", role="dev", event_type="dev_failed", issue_number=304
     ))
     conn = sqlite3.connect(server.db.DB_PATH)
     conn.execute(
@@ -160,6 +178,95 @@ def test_action_queue_threshold_seconds_field(isolated_client, monkeypatch):
     assert stuck_item is not None
     assert stuck_item["reason"] == "stuck_label"
     assert stuck_item["threshold_seconds"] is None
+
+
+# ── AC tests (issue #221) ─────────────────────────────────────────────────────
+
+
+def test_infer_dev_start_timeout(isolated_client, monkeypatch):
+    """AC1: dev_start older than dev threshold → stage=in-dev, reason=timeout."""
+    monkeypatch.setenv("HANDLER_TIMEOUT_DEV", "200")
+    server._insert_event(server.ReportPayload(
+        project="loop", role="dev", event_type="dev_start", issue_number=400
+    ))
+    conn = sqlite3.connect(server.db.DB_PATH)
+    conn.execute(
+        "UPDATE events SET created_at = datetime('now', '-300 seconds') WHERE issue_number = 400"
+    )
+    conn.commit()
+    conn.close()
+    resp = isolated_client.get("/api/action_queue")
+    data = resp.json()
+    items = [it for it in data if it["number"] == 400]
+    assert len(items) == 1
+    assert items[0]["stage"] == "in-dev"
+    assert items[0]["reason"] == "timeout"
+    assert items[0]["age_seconds"] >= 200
+
+
+def test_infer_dev_failed_blocked(isolated_client):
+    """AC2: dev_failed → stage=blocked, reason=stuck_label."""
+    server._insert_event(server.ReportPayload(
+        project="loop", role="dev", event_type="dev_failed", issue_number=401
+    ))
+    resp = isolated_client.get("/api/action_queue")
+    data = resp.json()
+    items = [it for it in data if it["number"] == 401]
+    assert len(items) == 1
+    assert items[0]["stage"] == "blocked"
+    assert items[0]["reason"] == "stuck_label"
+
+
+def test_infer_qa_fail_repeated(isolated_client):
+    """AC3: qa_fail with rework_count >= 3 → reason=qa_fail_repeated."""
+    server._insert_event(server.ReportPayload(
+        project="loop", role="qa", event_type="qa_fail", issue_number=402,
+        rework_count=3
+    ))
+    resp = isolated_client.get("/api/action_queue")
+    data = resp.json()
+    items = [it for it in data if it["number"] == 402]
+    assert len(items) == 1
+    assert items[0]["stage"] == "qa-fail"
+    assert items[0]["reason"] == "qa_fail_repeated"
+
+
+def test_infer_dev_done_not_returned(isolated_client):
+    """AC4: dev_done (work finished, nothing pending) → NOT returned."""
+    server._insert_event(server.ReportPayload(
+        project="loop", role="dev", event_type="dev_done", issue_number=403
+    ))
+    resp = isolated_client.get("/api/action_queue")
+    data = resp.json()
+    assert all(it["number"] != 403 for it in data)
+
+
+def test_infer_label_transition_loop_active_dev(isolated_client, monkeypatch):
+    """AC5: label_transition with loop:active:dev → reason=timeout if older than threshold."""
+    monkeypatch.setenv("HANDLER_TIMEOUT_DEV", "200")
+    server._insert_event(server.ReportPayload(
+        project="loop", role="dev", event_type="label_transition", issue_number=404,
+        payload={
+            "target_kind": "issue",
+            "number": 404,
+            "before_labels": [],
+            "after_labels": ["loop:active:dev"],
+            "op": "add",
+            "source": "loop",
+        }
+    ))
+    conn = sqlite3.connect(server.db.DB_PATH)
+    conn.execute(
+        "UPDATE events SET created_at = datetime('now', '-300 seconds') WHERE issue_number = 404"
+    )
+    conn.commit()
+    conn.close()
+    resp = isolated_client.get("/api/action_queue")
+    data = resp.json()
+    items = [it for it in data if it["number"] == 404]
+    assert len(items) == 1
+    assert items[0]["stage"] == "loop:active:dev"
+    assert items[0]["reason"] == "timeout"
 
 
 # ── Failure-context endpoint ──────────────────────────────────────────────────
@@ -207,6 +314,7 @@ def test_failure_endpoint_no_comment(isolated_client, monkeypatch):
 
 def test_failure_endpoint_with_marker(isolated_client, monkeypatch):
     """Returns parsed payload when a failure-context comment exists."""
+    monkeypatch.setitem(server.PROJECTS, "loop", "svv2014/loop")
     gh_helper._FAILURE_CACHE.clear()
 
     mock_result = MagicMock()
