@@ -6,6 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends
 
 from server.db import db_dep
+from server.event_mapping import remap_legacy_judge
 
 router = APIRouter()
 
@@ -50,7 +51,7 @@ def history(limit: int = 50, loop_id: Optional[str] = None, conn: sqlite3.Connec
         ORDER BY d.id DESC
         LIMIT ?
     """, params).fetchall()
-    return [dict(r) for r in rows]
+    return [remap_legacy_judge(dict(r)) for r in rows]
 
 
 @router.get("/api/active")
@@ -122,7 +123,7 @@ def feed(
     now = datetime.now(timezone.utc)
     result = []
     for r in rows:
-        entry = dict(r)
+        entry = remap_legacy_judge(dict(r))
         if entry["payload"]:
             entry["payload"] = json.loads(entry["payload"])
         try:
@@ -150,7 +151,7 @@ def status(conn: sqlite3.Connection = Depends(db_dep)):
     """).fetchall()
     result = []
     for r in rows:
-        entry = dict(r)
+        entry = remap_legacy_judge(dict(r))
         if entry["payload"]:
             entry["payload"] = json.loads(entry["payload"])
         result.append(entry)

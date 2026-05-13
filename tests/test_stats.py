@@ -124,3 +124,31 @@ def test_cycle_times_with_data(isolated_client):
     # issue_lifetime and pr_lifetime are null because columns not set
     assert data["issue_lifetime"] is None
     assert data["pr_lifetime"] is None
+
+
+def test_status_legacy_judge_remapped(isolated_client):
+    """Legacy (role='dev', event_type='judge') row surfaces as role='judge', event_type='judge_done' via /api/status."""
+    server._insert_event(server.ReportPayload(
+        project="proj-sj-legacy", role="dev", event_type="judge"
+    ))
+    resp = isolated_client.get("/api/status")
+    assert resp.status_code == 200
+    data = resp.json()
+    item = next((i for i in data if i["project"] == "proj-sj-legacy"), None)
+    assert item is not None
+    assert item["role"] == "judge"
+    assert item["event_type"] == "judge_done"
+
+
+def test_status_new_judge_unchanged(isolated_client):
+    """New-style (role='judge', event_type='judge_done') row passes through /api/status unchanged."""
+    server._insert_event(server.ReportPayload(
+        project="proj-sj-new", role="judge", event_type="judge_done"
+    ))
+    resp = isolated_client.get("/api/status")
+    assert resp.status_code == 200
+    data = resp.json()
+    item = next((i for i in data if i["project"] == "proj-sj-new"), None)
+    assert item is not None
+    assert item["role"] == "judge"
+    assert item["event_type"] == "judge_done"

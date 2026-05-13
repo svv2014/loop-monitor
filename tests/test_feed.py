@@ -164,3 +164,31 @@ def test_feed_role_filter_preserves_loop_id(isolated_client):
     data = resp.json()
     assert len(data) >= 1
     assert all(item["role"] == "dev" for item in data)
+
+
+def test_feed_legacy_judge_remapped(isolated_client):
+    """Legacy (role='dev', event_type='judge') row is returned as role='judge', event_type='judge_done'."""
+    server._insert_event(server.ReportPayload(
+        project="proj-jlegacy", role="dev", event_type="judge"
+    ))
+    resp = isolated_client.get("/api/feed")
+    assert resp.status_code == 200
+    data = resp.json()
+    item = next((i for i in data if i["project"] == "proj-jlegacy"), None)
+    assert item is not None
+    assert item["role"] == "judge"
+    assert item["event_type"] == "judge_done"
+
+
+def test_feed_new_judge_unchanged(isolated_client):
+    """New-style (role='judge', event_type='judge_done') row passes through unchanged."""
+    server._insert_event(server.ReportPayload(
+        project="proj-jnew", role="judge", event_type="judge_done"
+    ))
+    resp = isolated_client.get("/api/feed")
+    assert resp.status_code == 200
+    data = resp.json()
+    item = next((i for i in data if i["project"] == "proj-jnew"), None)
+    assert item is not None
+    assert item["role"] == "judge"
+    assert item["event_type"] == "judge_done"
