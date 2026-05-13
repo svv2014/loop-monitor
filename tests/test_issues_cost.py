@@ -142,6 +142,35 @@ def test_since_filter(tmp_path, monkeypatch):
     assert 61 in issue_numbers
 
 
+# (h) _fetch_gh_meta with unknown project slug → default stub, no subprocess call
+def test_fetch_gh_meta_unknown_project_returns_default(monkeypatch):
+    import subprocess as subprocess_mod
+    issues_cost_module._gh_cache.clear()
+    called = []
+
+    def _should_not_be_called(*args, **kwargs):
+        called.append(True)
+        raise AssertionError("subprocess.run must not be called for unknown project")
+
+    monkeypatch.setattr(subprocess_mod, "run", _should_not_be_called)
+    result = issues_cost_module._fetch_gh_meta("totally-unknown-slug", 999)
+    assert result == {"title": "", "state": "unknown", "priority": None, "body": "", "merged": False}
+    assert called == [], "subprocess.run should not have been called"
+
+
+# (i) _fetch_gh_meta unknown project slug caches the default stub
+def test_fetch_gh_meta_unknown_project_caches_result(monkeypatch):
+    import subprocess as subprocess_mod
+    issues_cost_module._gh_cache.clear()
+    monkeypatch.setattr(subprocess_mod, "run", lambda *a, **kw: None)
+
+    issues_cost_module._fetch_gh_meta("another-unknown-slug", 1)
+    key = ("another-unknown-slug", 1)
+    assert key in issues_cost_module._gh_cache, "default stub should be cached to avoid repeated lookups"
+    _expiry, cached = issues_cost_module._gh_cache[key]
+    assert cached == {"title": "", "state": "unknown", "priority": None, "body": "", "merged": False}
+
+
 # (g) limit + offset paginate correctly
 def test_limit_offset(tmp_path, monkeypatch):
     client = _make_client(monkeypatch, tmp_path, _open_meta)
