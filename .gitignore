@@ -20,3 +20,6 @@ tests/visual/_artifacts/
 
 # Operator-local project registry (see config/projects.yaml.example)
 config/projects.yaml
+
+# Operator-local role vocabulary (see config/roles.yaml.example)
+config/roles.yaml

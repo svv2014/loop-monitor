@@ -135,6 +135,34 @@ export async function fetchScannerState(): Promise<ScannerState> {
   return get<ScannerState>('/api/scanner_state');
 }
 
+// Operator-configured role vocabulary. Pipeline-agnostic — the server reads
+// config/roles.yaml (if present) and returns the list here. Falls back to the
+// Loop defaults (po/dev/qa/reviewer/merge/judge) when no config exists.
+export interface RoleConfig {
+  id: string;
+  label: string;
+  color: string;
+}
+
+export const DEFAULT_ROLES: RoleConfig[] = [
+  { id: 'po',       label: 'PO',       color: 'violet' },
+  { id: 'dev',      label: 'Dev',      color: 'blue' },
+  { id: 'qa',       label: 'QA',       color: 'amber' },
+  { id: 'reviewer', label: 'Reviewer', color: 'pink' },
+  { id: 'merge',    label: 'Merge',    color: 'green' },
+  { id: 'judge',    label: 'Judge',    color: 'indigo' },
+];
+
+export async function fetchRoles(): Promise<RoleConfig[]> {
+  if (isFixtureMode()) return DEFAULT_ROLES;
+  try {
+    const data = await get<{ roles: RoleConfig[] }>('/api/config/roles');
+    return data.roles?.length ? data.roles : DEFAULT_ROLES;
+  } catch {
+    return DEFAULT_ROLES;
+  }
+}
+
 export interface IssuesCostParams {
   project?: string;
   since?: string;

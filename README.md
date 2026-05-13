@@ -79,6 +79,41 @@ Lookup order:
 
 The registry is loaded once at startup; restart the server after editing.
 
+## Customize the role vocabulary
+
+By default loop-monitor displays the six Loop pipeline stages (`po`, `dev`,
+`qa`, `reviewer`, `merge`, `judge`) with their colors. If your pipeline
+emits a different vocabulary (e.g. `lint`, `build`, `test`, `deploy`),
+override it by copying the example:
+
+```bash
+cp config/roles.yaml.example config/roles.yaml
+# then edit
+```
+
+```yaml
+roles:
+  - id: lint
+    label: Lint
+    color: cyan
+  - id: build
+    label: Build
+    color: blue
+  - id: test
+    label: Test
+    color: amber
+  - id: deploy
+    label: Deploy
+    color: green
+```
+
+Allowed colors: `violet`, `blue`, `cyan`, `amber`, `pink`, `green`,
+`indigo`, `red`, `gray`. Order matters — it determines display order in
+charts and filters. The frontend reads this list from `/api/config/roles`
+at startup; restart the server to pick up changes.
+
+If no config file exists, the built-in Loop defaults apply.
+
 ## Wire it to Loop
 
 In your Loop core's `loop.env`:
