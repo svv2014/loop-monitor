@@ -164,3 +164,45 @@ def test_feed_role_filter_preserves_loop_id(isolated_client):
     data = resp.json()
     assert len(data) >= 1
     assert all(item["role"] == "dev" for item in data)
+
+
+def test_feed_remaps_legacy_judge_rows_and_filters_as_done(isolated_client):
+    conn = sqlite3.connect(server.db.DB_PATH)
+    conn.execute(
+        """INSERT INTO events
+           (project, role, event_type, issue_number, created_at)
+           VALUES (?, ?, ?, ?, datetime('now'))""",
+        ("proj-judge", "dev", "judge", 213),
+    )
+    conn.commit()
+    conn.close()
+
+    resp = isolated_client.get("/api/feed?role=judge&status=done")
+    assert resp.status_code == 200
+    item = next((i for i in resp.json() if i["project"] == "proj-judge"), None)
+
+    assert item is not None
+    assert item["role"] == "judge"
+    assert item["event_type"] == "judge_done"
+    assert item["status"] == "done"
+
+
+def test_history_includes_legacy_judge_rows_with_null_duration(isolated_client):
+    conn = sqlite3.connect(server.db.DB_PATH)
+    conn.execute(
+        """INSERT INTO events
+           (project, role, event_type, issue_number, created_at)
+           VALUES (?, ?, ?, ?, datetime('now'))""",
+        ("proj-history-judge", "dev", "judge", 213),
+    )
+    conn.commit()
+    conn.close()
+
+    resp = isolated_client.get("/api/history")
+    assert resp.status_code == 200
+    item = next((i for i in resp.json() if i["project"] == "proj-history-judge"), None)
+
+    assert item is not None
+    assert item["role"] == "judge"
+    assert item["event_type"] == "judge_done"
+    assert item["duration_seconds"] is None
