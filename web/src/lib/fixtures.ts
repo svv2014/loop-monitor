@@ -20,6 +20,7 @@ import type {
   ClaudeUsage,
   ScannerState,
   IssueCostRow,
+  Timeline,
 } from './types';
 
 const PROJECTS = [
@@ -357,6 +358,69 @@ export function getFixtureIssuesCost(): IssueCostRow[] {
       last_event_at: new Date(Date.now() - randInt(60, 7 * 86400) * 1000).toISOString(),
     };
   }).sort((a, b) => b.rework_factor - a.rework_factor || b.actual_runs - a.actual_runs);
+}
+
+export function getFixtureTimeline(project: string, kind: 'issue' | 'pr', number: number): Timeline {
+  const base = kind === 'issue' ? 'issues' : 'pull';
+  const now = Date.now();
+  return {
+    project,
+    kind,
+    number,
+    title: `Fixture: ${kind} #${number} — example timeline`,
+    github_url: `https://github.com/svv2014/${project}/${base}/${number}`,
+    stage: 'loop:stage:dev',
+    linked_pr: kind === 'issue' ? number + 10 : null,
+    linked_issue: kind === 'pr' ? number - 10 : null,
+    events: [
+      {
+        id: 1,
+        role: 'po',
+        event_type: 'po_start',
+        model: 'sonnet-4-6',
+        created_at: new Date(now - 3600 * 1000).toISOString(),
+        duration_seconds: 600,
+        points: null,
+        detail: 'spec breakdown',
+      },
+      {
+        id: 2,
+        role: 'po',
+        event_type: 'po_done',
+        model: 'sonnet-4-6',
+        created_at: new Date(now - 3000 * 1000).toISOString(),
+        duration_seconds: null,
+        points: null,
+        detail: null,
+      },
+      {
+        id: 3,
+        role: 'dev',
+        event_type: 'dev_start',
+        model: 'opus-4-1',
+        created_at: new Date(now - 2900 * 1000).toISOString(),
+        duration_seconds: 1800,
+        points: null,
+        detail: 'implement feature',
+      },
+      {
+        id: 4,
+        role: 'dev',
+        event_type: 'dev_done',
+        model: 'opus-4-1',
+        created_at: new Date(now - 1100 * 1000).toISOString(),
+        duration_seconds: null,
+        points: null,
+        detail: null,
+      },
+    ],
+    totals: {
+      total_duration_seconds: 2400,
+      total_points: 5,
+      rework_count: 0,
+      verdict: 'approved',
+    },
+  };
 }
 
 export function getFixtureScannerState(): ScannerState {

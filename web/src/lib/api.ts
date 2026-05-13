@@ -22,6 +22,7 @@ import type {
   LogsResponse,
   IssueCostRow,
   FailureContext,
+  Timeline,
 } from './types';
 import * as fx from './fixtures';
 
@@ -159,6 +160,16 @@ export async function fetchFailureContext(
   return get<FailureContext>(
     `/api/action_queue/${encodeURIComponent(project)}/${encodeURIComponent(kind)}/${number}/failure`,
   );
+}
+
+export async function fetchTimeline(
+  project: string,
+  kind: 'issue' | 'pr',
+  number: number,
+): Promise<Timeline> {
+  if (isFixtureMode()) return fx.getFixtureTimeline(project, kind, number);
+  const param = kind === 'issue' ? 'issue' : 'pr';
+  return get<Timeline>(`/api/timeline?project=${encodeURIComponent(project)}&${param}=${number}`);
 }
 
 export class LogsDisabledError extends Error {

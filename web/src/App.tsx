@@ -9,6 +9,7 @@ import ProjectDetail from './screens/ProjectDetail';
 import Queue from './screens/Queue';
 import WorkerDetail from './screens/WorkerDetail';
 import Cost from './screens/Cost';
+import Timeline from './panels/Timeline';
 import { useHashRoute } from './router';
 import { fetchActive, fetchHealth } from './lib/api';
 
@@ -106,6 +107,7 @@ export default function App() {
 
   return (
     <div className="app">
+      <Timeline />
       <Logo />
       <TopBar events={events} online={online} version={version} />
       <NavRail screen={isProjectDetail ? 'projects' : navScreen} setScreen={handleNavChange} />
