@@ -1,0 +1,20 @@
+# loop-monitor — project registry
+#
+# Each entry maps a project slug (the value pipelines send in the `project`
+# field of their bounty events) to a GitHub repository in `owner/repo` form.
+#
+# How loop-monitor finds this file (in order):
+#   1. $LOOP_MONITOR_PROJECTS_CONFIG (absolute path to a yaml file)
+#   2. ./config/projects.yaml (relative to repo root)
+#   3. Fall back to an empty registry (loop-monitor still runs; some links
+#      will be absent in the UI)
+#
+# Copy this file to `config/projects.yaml` and edit. `config/projects.yaml`
+# is gitignored so your operator-specific list does not enter version control.
+#
+# Format: a single top-level `projects` map.
+
+projects:
+  # example-app:        org-name/example-app
+  # docs-site:          org-name/docs-site
+  # ml-pipeline:        org-name/ml-pipeline
