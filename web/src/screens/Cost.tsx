@@ -152,14 +152,18 @@ export default function Cost() {
               <tr key={`${row.project}-${row.issue_number}`}>
                 <td className="mono" style={{ fontSize: 11 }}>{row.project}</td>
                 <td>
-                  <a
-                    href={`https://github.com/svv2014/${row.project}/issues/${row.issue_number}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{ color: 'var(--fg-2)', textDecoration: 'none', fontFamily: 'var(--font-mono)', fontSize: 11 }}
-                  >
-                    #{row.issue_number}
-                  </a>
+                  {row.github_url ? (
+                    <a
+                      href={row.github_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ color: 'var(--fg-2)', textDecoration: 'none', fontFamily: 'var(--font-mono)', fontSize: 11 }}
+                    >
+                      #{row.issue_number}
+                    </a>
+                  ) : (
+                    <span className="mono" style={{ color: 'var(--fg-3)', fontSize: 11 }}>#{row.issue_number}</span>
+                  )}
                 </td>
                 <td className="mono" style={{ fontSize: 10, color: 'var(--fg-3)' }}>{row.priority}</td>
                 <td className="mono" style={{ fontSize: 10, color: 'var(--fg-3)' }}>{row.state}</td>

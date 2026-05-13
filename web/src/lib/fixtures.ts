@@ -22,16 +22,19 @@ import type {
   IssueCostRow,
 } from './types';
 
+// Fixture data — example projects used for screenshots / Storybook / tests.
+// Not the runtime registry. The runtime project list comes from the server's
+// /api/* endpoints, populated from config/projects.yaml.
 const PROJECTS = [
-  { id: 'loop',               repo: 'svv2014/loop' },
-  { id: 'loop-monitor',       repo: 'svv2014/loop-monitor' },
-  { id: 'boba-event',         repo: 'svv2014/boba-event' },
-  { id: 'boba-orchestrator',  repo: 'svv2014/boba-orchestrator' },
-  { id: 'ntc',                repo: 'svv2014/NanoTraderCopilot' },
-  { id: 'pa-scanner',         repo: 'svv2014/pa-scanner' },
-  { id: 'ppl',                repo: 'svv2014/ppl-study' },
-  { id: 'suprun',             repo: 'svv2014/suprun' },
-  { id: 'vrefm-classifier',   repo: 'svv2014/vrefm-classifier' },
+  { id: 'web-app',         repo: 'example-org/web-app' },
+  { id: 'api-server',      repo: 'example-org/api-server' },
+  { id: 'cli-tool',        repo: 'example-org/cli-tool' },
+  { id: 'docs-site',       repo: 'example-org/docs-site' },
+  { id: 'ml-pipeline',     repo: 'example-org/ml-pipeline' },
+  { id: 'mobile-app',      repo: 'example-org/mobile-app' },
+  { id: 'data-scraper',    repo: 'example-org/data-scraper' },
+  { id: 'analytics',       repo: 'example-org/analytics' },
+  { id: 'auth-service',    repo: 'example-org/auth-service' },
 ] as const;
 
 const ROLES = ['po', 'dev', 'qa', 'reviewer', 'merge', 'judge'] as const;
@@ -273,7 +276,7 @@ export function getFixturePRMonitor(project: string): PRMonitorEntry[] {
     retry_count: randInt(0, 2),
     last_event: pick(EVENT_TYPES),
     last_event_at: new Date(Date.now() - randInt(60, 3600) * 1000).toISOString(),
-    github_url: `https://github.com/svv2014/${project}/pull/${randInt(10, 200)}`,
+    github_url: `https://github.com/example-org/${project}/pull/${randInt(10, 200)}`,
     is_finished: i > 3,
     is_draft: false,
   }));
@@ -345,9 +348,10 @@ export function getFixtureIssuesCost(): IssueCostRow[] {
     const p = pick(PROJECTS);
     const actual_runs = randInt(1, 12);
     const rework_factor = parseFloat((actual_runs / 5).toFixed(2));
+    const issue_number = randInt(10, 200);
     return {
       project: p.id,
-      issue_number: randInt(10, 200),
+      issue_number,
       priority: pick(PRIORITIES),
       state: pick(STATES),
       rework_factor,
@@ -355,6 +359,7 @@ export function getFixtureIssuesCost(): IssueCostRow[] {
       stranded_seconds: rand() > 0.4 ? randInt(0, 72 * 3600) : null,
       actual_runs,
       last_event_at: new Date(Date.now() - randInt(60, 7 * 86400) * 1000).toISOString(),
+      github_url: `https://github.com/${p.repo}/issues/${issue_number}`,
     };
   }).sort((a, b) => b.rework_factor - a.rework_factor || b.actual_runs - a.actual_runs);
 }

@@ -7,6 +7,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends
 
+from server.constants import PROJECTS
 from server.db import db_dep
 
 router = APIRouter()
@@ -29,11 +30,15 @@ def _fetch_gh_meta(project: str, issue_number: int) -> dict:
             return data
 
     default: dict = {"title": "", "state": "unknown", "priority": None, "body": "", "merged": False}
+    repo = PROJECTS.get(project)
+    if not repo:
+        _gh_cache[key] = (now + _GH_TTL, default)
+        return default
     try:
         result = subprocess.run(
             [
                 "gh", "api",
-                f"repos/svv2014/{project}/issues/{issue_number}",
+                f"repos/{repo}/issues/{issue_number}",
                 "--jq",
                 "{title, state, body, labels: [.labels[].name], pull_request}",
             ],
@@ -92,8 +97,15 @@ def _build_row(raw: dict, meta: dict, now_ts: float) -> dict:
         stage_runs[role] = raw.get(f"{role}_runs") or 0
         stage_runs[f"{role}_failed"] = raw.get(f"{role}_failed") or 0
 
+    project = raw["project"]
+    repo = PROJECTS.get(project)
+    github_url = (
+        f"https://github.com/{repo}/issues/{raw['issue_number']}"
+        if repo else None
+    )
+
     return {
-        "project": raw["project"],
+        "project": project,
         "issue_number": raw["issue_number"],
         "title": meta.get("title") or "",
         "priority": meta.get("priority"),
@@ -107,6 +119,7 @@ def _build_row(raw: dict, meta: dict, now_ts: float) -> dict:
         "total_points": raw.get("total_points") or 0,
         "verdict_count": raw.get("verdict_count") or 0,
         "stranded_seconds": stranded_seconds,
+        "github_url": github_url,
     }
 
 
