@@ -1,6 +1,7 @@
 import type { Worker, FeedItem } from '../lib/types';
 import { relTime, durationFmt, absoluteUtc, useTick } from '../lib/utils';
 import EventGlyph from '../components/EventGlyph';
+import IssueRef from '../components/IssueRef';
 
 interface NowStripProps {
   workers: Worker[];
@@ -39,7 +40,9 @@ export default function NowStrip({ workers, events }: NowStripProps) {
               <span className="muted">·</span>
               <span className="muted mono">
                 {lastEvent.project}
-                {lastEvent.issue_number != null ? `#${lastEvent.issue_number}` : ''}
+                {lastEvent.issue_number != null && (
+                  <IssueRef number={lastEvent.issue_number} url={lastEvent.github_url} />
+                )}
               </span>
               <span className="muted">·</span>
               <span className="muted" title={absoluteUtc(lastTs) + ' (' + relTime(lastTs) + ')'}>{relTime(lastTs)}</span>

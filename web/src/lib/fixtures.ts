@@ -222,6 +222,7 @@ export function getFixtureFeed(): FeedItem[] {
     created_at: e.created_at,
     age_seconds: Math.floor((Date.now() - e.ts) / 1000),
     status: e.event_type.endsWith('_fail') ? 'fail' : e.event_type.endsWith('_pass') ? 'pass' : 'done',
+    github_url: null,
   }));
 }
 

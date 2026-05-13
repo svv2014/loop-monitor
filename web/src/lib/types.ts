@@ -43,6 +43,7 @@ export interface FeedItem {
   created_at: string;
   age_seconds: number | null;
   status: string;
+  github_url: string | null;
 }
 
 export interface LoopEvent {
@@ -59,6 +60,7 @@ export interface LoopEvent {
   started_at?: string | null;
   duration_seconds?: number | null;
   points?: number | null;
+  github_url?: string | null;
 }
 
 export interface StatusEntry {
