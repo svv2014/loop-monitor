@@ -42,7 +42,7 @@ def test_action_queue_needs_clarification(isolated_client):
 def test_action_queue_timeout_threshold(isolated_client, monkeypatch):
     monkeypatch.setenv("HANDLER_TIMEOUT_DEV", "200")
     server._insert_event(server.ReportPayload(
-        project="loop", role="dev", event_type="in-progress", issue_number=11
+        project="loop", role="dev", event_type="dev_start", issue_number=11
     ))
     # backdate created_at to 300s ago — exceeds 200s threshold
     conn = sqlite3.connect(server.db.DB_PATH)
@@ -55,14 +55,14 @@ def test_action_queue_timeout_threshold(isolated_client, monkeypatch):
     data = resp.json()
     timeout_items = [it for it in data if it["reason"] == "timeout" and it["number"] == 11]
     assert len(timeout_items) == 1
-    assert timeout_items[0]["stage"] == "in-progress"
+    assert timeout_items[0]["stage"] == "in-dev"
     assert timeout_items[0]["age_seconds"] >= 200
 
 
-def test_action_queue_in_progress_below_threshold_excluded(isolated_client, monkeypatch):
+def test_action_queue_in_dev_below_threshold_excluded(isolated_client, monkeypatch):
     monkeypatch.setenv("HANDLER_TIMEOUT_DEV", "3600")
     server._insert_event(server.ReportPayload(
-        project="loop", role="dev", event_type="in-progress", issue_number=13
+        project="loop", role="dev", event_type="dev_start", issue_number=13
     ))
     resp = isolated_client.get("/api/action_queue")
     data = resp.json()
@@ -92,7 +92,7 @@ def test_action_queue_sorted_by_age_desc(isolated_client, monkeypatch):
 def test_action_queue_per_stage_threshold_dev_override(isolated_client, monkeypatch):
     monkeypatch.setenv("HANDLER_TIMEOUT_DEV", "500")
     server._insert_event(server.ReportPayload(
-        project="loop", role="dev", event_type="in-progress", issue_number=300
+        project="loop", role="dev", event_type="dev_start", issue_number=300
     ))
     conn = sqlite3.connect(server.db.DB_PATH)
     conn.execute(
@@ -160,6 +160,100 @@ def test_action_queue_threshold_seconds_field(isolated_client, monkeypatch):
     assert stuck_item is not None
     assert stuck_item["reason"] == "stuck_label"
     assert stuck_item["threshold_seconds"] is None
+
+
+# ── Inference-path tests (LM-221) ─────────────────────────────────────────────
+
+def test_infer_dev_start_timeout(isolated_client, monkeypatch):
+    """dev_start older than dev threshold → returned with stage='in-dev', reason='timeout'."""
+    monkeypatch.setenv("HANDLER_TIMEOUT_DEV", "200")
+    server._insert_event(server.ReportPayload(
+        project="loop", role="dev", event_type="dev_start", issue_number=400
+    ))
+    conn = sqlite3.connect(server.db.DB_PATH)
+    conn.execute(
+        "UPDATE events SET created_at = datetime('now', '-300 seconds') WHERE issue_number = 400"
+    )
+    conn.commit()
+    conn.close()
+    resp = isolated_client.get("/api/action_queue")
+    data = resp.json()
+    items = [it for it in data if it["number"] == 400]
+    assert len(items) == 1
+    assert items[0]["stage"] == "in-dev"
+    assert items[0]["reason"] == "timeout"
+    assert items[0]["age_seconds"] >= 200
+
+
+def test_infer_dev_failed_stuck(isolated_client):
+    """dev_failed latest event → returned with stage='blocked', reason='stuck_label'."""
+    server._insert_event(server.ReportPayload(
+        project="loop", role="dev", event_type="dev_failed", issue_number=401
+    ))
+    resp = isolated_client.get("/api/action_queue")
+    data = resp.json()
+    items = [it for it in data if it["number"] == 401]
+    assert len(items) == 1
+    assert items[0]["stage"] == "blocked"
+    assert items[0]["reason"] == "stuck_label"
+
+
+def test_infer_qa_fail_repeated(isolated_client):
+    """qa_fail latest event with rework_count >= 3 → reason='qa_fail_repeated'."""
+    server._insert_event(server.ReportPayload(
+        project="loop", role="qa", event_type="qa_fail", issue_number=402,
+        rework_count=3
+    ))
+    resp = isolated_client.get("/api/action_queue")
+    data = resp.json()
+    items = [it for it in data if it["number"] == 402]
+    assert len(items) == 1
+    assert items[0]["stage"] == "qa-fail"
+    assert items[0]["reason"] == "qa_fail_repeated"
+
+
+def test_infer_dev_done_not_returned(isolated_client):
+    """dev_done (work finished, nothing pending) → NOT returned in action queue."""
+    server._insert_event(server.ReportPayload(
+        project="loop", role="dev", event_type="dev_done", issue_number=403
+    ))
+    resp = isolated_client.get("/api/action_queue")
+    data = resp.json()
+    assert all(it["number"] != 403 for it in data)
+
+
+def test_infer_label_transition_loop_active_dev_timeout(isolated_client, monkeypatch):
+    """label_transition event with after_labels=['loop:active:dev'] → stage='loop:active:dev', reason='timeout'.
+
+    Forward-compat test for loop#344 (loop:* namespace migration). The payload schema
+    is already defined in server/models.py; this test validates the inference path works
+    once loop emits these events.
+    """
+    monkeypatch.setenv("HANDLER_TIMEOUT_DEV", "200")
+    server._insert_event(server.ReportPayload(
+        project="loop", role="dev", event_type="label_transition",
+        issue_number=404,
+        payload={
+            "target_kind": "issue",
+            "number": 404,
+            "before_labels": ["in-dev"],
+            "after_labels": ["loop:active:dev"],
+            "op": "swap",
+            "source": "reconciler",
+        }
+    ))
+    conn = sqlite3.connect(server.db.DB_PATH)
+    conn.execute(
+        "UPDATE events SET created_at = datetime('now', '-300 seconds') WHERE issue_number = 404"
+    )
+    conn.commit()
+    conn.close()
+    resp = isolated_client.get("/api/action_queue")
+    data = resp.json()
+    items = [it for it in data if it["number"] == 404]
+    assert len(items) == 1
+    assert items[0]["stage"] == "loop:active:dev"
+    assert items[0]["reason"] == "timeout"
 
 
 # ── Failure-context endpoint ──────────────────────────────────────────────────
