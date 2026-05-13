@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import PrMonitorTable from '../components/PrMonitorTable';
+import IssueRef from '../components/IssueRef';
 import type { Worker, FeedItem, PipelineRun, PRMonitorEntry, CycleTimesResponse, SloConfig } from '../lib/types';
 import { fetchCycleTimes, fetchSlo } from '../lib/api';
 
@@ -430,7 +431,9 @@ export default function ProjectDetail({ projectId, allProjectIds, onBack, onProj
                     </span>
                     <span className="mono">{e.event_type}</span>
                     {e.issue_number != null && (
-                      <span className="muted mono" style={{ fontSize: 11 }}>· #{e.issue_number}</span>
+                      <span className="muted mono" style={{ fontSize: 11 }}>
+                        · <IssueRef number={e.issue_number} url={e.github_url} />
+                      </span>
                     )}
                     {e.model && (
                       <span className="muted mono" style={{ fontSize: 11 }}>· {e.model}</span>

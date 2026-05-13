@@ -14,6 +14,7 @@ import RoleTag from '../components/RoleTag';
 import { relTime, durationFmt } from '../lib/utils';
 import Charts from '../panels/Charts';
 import ClaudeUsage from '../panels/ClaudeUsage';
+import IssueRef from '../components/IssueRef';
 
 const COMPLETED_TYPES = new Set([
   'merge_done', 'judge_done', 'review_done', 'dev_done', 'po_done',
@@ -137,7 +138,9 @@ export default function Overview() {
                       </div>
                       <div className="muted mono" style={{ fontSize: 11, marginTop: 2 }}>
                         {e.event_type}
-                        {e.issue_number != null ? ` · #${e.issue_number}` : ''}
+                        {e.issue_number != null && (
+                          <> · <IssueRef number={e.issue_number} url={e.github_url} /></>
+                        )}
                         {durMs > 0 ? ` · ${durationFmt(durMs)}` : ''}
                       </div>
                     </div>

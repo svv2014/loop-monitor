@@ -3,6 +3,7 @@ import type { FeedItem } from '../lib/types';
 import { relTime } from '../lib/utils';
 import RoleTag from '../components/RoleTag';
 import EventGlyph from '../components/EventGlyph';
+import IssueRef from '../components/IssueRef';
 
 const ROLES = ['all', 'po', 'dev', 'qa', 'reviewer', 'merge', 'judge'] as const;
 
@@ -45,7 +46,9 @@ export default function ActivityFeed({ events }: ActivityFeedProps) {
                   <span className="mono" style={{ fontSize: 12 }}>{e.event_type}</span>
                   <span className="muted mono" style={{ fontSize: 11 }}>
                     · {e.project}
-                    {e.issue_number != null ? `#${e.issue_number}` : ''}
+                    {e.issue_number != null && (
+                      <IssueRef number={e.issue_number} url={e.github_url} />
+                    )}
                   </span>
                 </div>
                 <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>

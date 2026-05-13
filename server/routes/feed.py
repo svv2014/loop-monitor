@@ -5,9 +5,21 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends
 
+from server.constants import PROJECTS
 from server.db import db_dep
 
 router = APIRouter()
+
+
+def _github_url(project: str, issue_number: Optional[int], pr_number: Optional[int]) -> Optional[str]:
+    repo = PROJECTS.get(project)
+    if not repo:
+        return None
+    if issue_number is not None:
+        return f"https://github.com/{repo}/issues/{issue_number}"
+    if pr_number is not None:
+        return f"https://github.com/{repo}/pull/{pr_number}"
+    return None
 
 
 @router.get("/api/history")
@@ -50,7 +62,12 @@ def history(limit: int = 50, loop_id: Optional[str] = None, conn: sqlite3.Connec
         ORDER BY d.id DESC
         LIMIT ?
     """, params).fetchall()
-    return [dict(r) for r in rows]
+    result = []
+    for r in rows:
+        entry = dict(r)
+        entry["github_url"] = _github_url(entry["project"], entry.get("issue_number"), entry.get("pr_number"))
+        result.append(entry)
+    return result
 
 
 @router.get("/api/active")
@@ -133,6 +150,7 @@ def feed(
         except Exception:
             entry["age_seconds"] = None
         entry["status"] = _derive_status(entry["event_type"])
+        entry["github_url"] = _github_url(entry["project"], entry.get("issue_number"), entry.get("pr_number"))
         result.append(entry)
     return result
 
