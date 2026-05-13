@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { buildLeaderboard, buildProjectStatus, build24hBuckets } from './transforms';
+import { relTime, durationFmt, absoluteUtc } from './utils';
 import type { LoopEvent, Worker } from './types';
 
 type ExtLoopEvent = LoopEvent & { points?: number; agent?: string; ts?: number };
@@ -33,6 +34,65 @@ function makeWorker(overrides: Partial<Worker> = {}): Worker {
     ...overrides,
   };
 }
+
+// ── relTime ───────────────────────────────────────────────────────────────────
+
+describe('relTime', () => {
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('returns seconds with ago suffix', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(30_000);
+    expect(relTime(0)).toBe('30s ago');
+  });
+
+  it('returns minutes with ago suffix', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(5 * 60 * 1000);
+    expect(relTime(0)).toBe('5m ago');
+  });
+
+  it('returns hours with ago suffix', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(3 * 3600 * 1000);
+    expect(relTime(0)).toBe('3h ago');
+  });
+
+  it('returns days with ago suffix', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(2 * 86400 * 1000);
+    expect(relTime(0)).toBe('2d ago');
+  });
+});
+
+// ── durationFmt ───────────────────────────────────────────────────────────────
+
+describe('durationFmt', () => {
+  it('formats seconds', () => {
+    expect(durationFmt(45_000)).toBe('45s');
+  });
+
+  it('formats minutes and seconds', () => {
+    expect(durationFmt(5 * 60 * 1000 + 30 * 1000)).toBe('5m 30s');
+  });
+
+  it('pads seconds to two digits', () => {
+    expect(durationFmt(60_000 + 5_000)).toBe('1m 05s');
+  });
+
+  it('formats hours and minutes', () => {
+    expect(durationFmt(2 * 3600 * 1000 + 15 * 60 * 1000)).toBe('2h 15m');
+  });
+});
+
+// ── absoluteUtc ───────────────────────────────────────────────────────────────
+
+describe('absoluteUtc', () => {
+  it('returns ISO-8601 UTC string for epoch 0', () => {
+    expect(absoluteUtc(0)).toBe(new Date(0).toISOString());
+  });
+
+  it('returns ISO-8601 UTC string for a known timestamp', () => {
+    const ts = 1_715_565_366_000;
+    expect(absoluteUtc(ts)).toBe(new Date(ts).toISOString());
+  });
+});
 
 // ── buildLeaderboard ──────────────────────────────────────────────────────────
 

@@ -355,7 +355,7 @@ export default function ProjectDetail({ projectId, allProjectIds, onBack, onProj
                     </td>
                     <td className="num muted" style={{ textAlign: 'right' }}>{i.runCount}</td>
                     <td className="muted mono" style={{ fontSize: 11 }}>
-                      {i.lastAt ? `${relTime(i.lastAt)} ago` : '—'}
+                      {i.lastAt ? relTime(i.lastAt) : '—'}
                     </td>
                     <td className="num" style={{ textAlign: 'right' }}>{i.pts}</td>
                   </tr>

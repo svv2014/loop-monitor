@@ -1,5 +1,5 @@
 import type { Worker, FeedItem } from '../lib/types';
-import { relTime, durationFmt, useTick } from '../lib/utils';
+import { relTime, durationFmt, absoluteUtc, useTick } from '../lib/utils';
 import EventGlyph from '../components/EventGlyph';
 
 interface NowStripProps {
@@ -42,7 +42,7 @@ export default function NowStrip({ workers, events }: NowStripProps) {
                 {lastEvent.issue_number != null ? `#${lastEvent.issue_number}` : ''}
               </span>
               <span className="muted">·</span>
-              <span className="muted">{relTime(lastTs)} ago</span>
+              <span className="muted" title={absoluteUtc(lastTs) + ' (' + relTime(lastTs) + ')'}>{relTime(lastTs)}</span>
             </span>
           )}
         </div>
@@ -87,7 +87,7 @@ export default function NowStrip({ workers, events }: NowStripProps) {
                   {w.event_type}
                 </div>
               </div>
-              <span className="timer">{durationFmt(Date.now() - startedAt)}</span>
+              <span className="timer" title={durationFmt(Date.now() - startedAt) + ' elapsed'}>{durationFmt(Date.now() - startedAt)}</span>
             </div>
           );
         })}

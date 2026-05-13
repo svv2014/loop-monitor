@@ -32,7 +32,7 @@ export default function ProjectCard({ p, onClick }: ProjectCardProps) {
         <div style={{ fontSize: 11, color: 'var(--fg-3)' }}>
           last: <span className="mono">{p.lastEvent ?? '—'}</span>
           {' · '}
-          {p.lastTs ? relTime(p.lastTs) + ' ago' : '—'}
+          {p.lastTs ? relTime(p.lastTs) : '—'}
         </div>
       )}
       <div style={{
