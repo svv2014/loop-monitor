@@ -3,8 +3,7 @@ import type { FeedItem } from '../lib/types';
 import { relTime } from '../lib/utils';
 import RoleTag from '../components/RoleTag';
 import EventGlyph from '../components/EventGlyph';
-
-const ROLES = ['all', 'po', 'dev', 'qa', 'reviewer', 'merge', 'judge'] as const;
+import { useRoleIds } from '../lib/useRoles';
 
 interface ActivityFeedProps {
   events: FeedItem[];
@@ -12,6 +11,10 @@ interface ActivityFeedProps {
 
 export default function ActivityFeed({ events }: ActivityFeedProps) {
   const [filter, setFilter] = useState('all');
+  const roleIds = useRoleIds();
+  // Filter buttons: 'all' first, then the operator-configured roles
+  const filters = useMemo(() => ['all', ...roleIds], [roleIds]);
+
   const rows = useMemo(() => {
     const r = filter === 'all' ? events : events.filter(e => e.role === filter);
     return r.slice(0, 60);
@@ -22,7 +25,7 @@ export default function ActivityFeed({ events }: ActivityFeedProps) {
       <div className="panel-h">
         <span>Activity feed</span>
         <span className="actions">
-          {ROLES.map(r => (
+          {filters.map(r => (
             <button
               key={r}
               className={`btn ${filter === r ? 'primary' : ''}`}

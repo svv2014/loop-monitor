@@ -83,7 +83,10 @@ export function buildProjectStatus(
   return Array.from(byProject.values()).sort((a, b) => b.points - a.points);
 }
 
-const KNOWN_ROLES = ['po', 'dev', 'qa', 'reviewer', 'merge', 'judge'] as const;
+// Default role list used when callers don't pass an operator-configured
+// vocabulary. Panels that render this data should pass the live list from
+// useRoles() to honor config/roles.yaml.
+export const DEFAULT_KNOWN_ROLES = ['po', 'dev', 'qa', 'reviewer', 'merge', 'judge'] as const;
 
 export interface HourBucket {
   hour: number;
@@ -93,10 +96,11 @@ export interface HourBucket {
 
 export function build24hBuckets(
   events: (LoopEvent & { ts?: number })[],
+  roles: readonly string[] = DEFAULT_KNOWN_ROLES,
 ): HourBucket[] {
   const buckets: HourBucket[] = Array.from({ length: 24 }, (_, i) => ({
     hour: i,
-    counts: Object.fromEntries(KNOWN_ROLES.map((r) => [r, 0])),
+    counts: Object.fromEntries(roles.map((r) => [r, 0])),
     total: 0,
   }));
   const now = Date.now();
