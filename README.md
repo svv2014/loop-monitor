@@ -1,11 +1,8 @@
-# loop-monitor — Companion dashboard for Loop
+# loop-monitor — Dashboard for autonomous CI/CD pipelines
 
-> Live agent status, bounty leaderboard, AI judge verdicts, PR scorecards.
-> The visibility layer for the [Loop](https://github.com/svv2014/loop) pipeline.
+> Live agent status, leaderboard, AI judge verdicts, PR scorecards, cycle-time analytics. Bring your own pipeline.
 
-> **Renamed from bounty-monitor** — `loop-monitor` is the direct successor to [`svv2014/bounty-monitor`](https://github.com/svv2014/bounty-monitor) (now archived). The API, event schema, and port (18792) are identical — no migration needed.
-
-## What it shows
+loop-monitor renders any pipeline that emits the simple [bounty event API](#api). It ships with first-class integration for [Loop](https://github.com/svv2014/loop) (the autonomous dev pipeline it was originally built for), but works equally well as the visibility layer for your own CI/CD, autonomous-agent, or build/deploy system. The role vocabulary, project list, and event types are all operator-configurable via yaml — no source patches.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -13,35 +10,32 @@
 │                http://localhost:18792                        │
 ├─────────────────────────────────────────────────────────────┤
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────────┐      │
-│  │ Planner  │  │ Builder  │  │ Reviewer │  │ Tester │      │
-│  │ 🟢 idle  │  │ 🔵 busy  │  │ 🟢 idle  │  │ 🟡 qa  │      │
+│  │   Lint   │  │  Build   │  │   Test   │  │ Deploy │      │
+│  │ ◉  idle  │  │ ◉  busy  │  │ ◉  idle  │  │ ◉ wait │      │
 │  │ 52 pts   │  │ 185 pts  │  │ 120 pts  │  │ 74 pts │      │
 │  └──────────┘  └──────────┘  └──────────┘  └────────┘      │
 │                                                              │
-│  LIVE FEED                           BOUNTY BOARD            │
-│  • 🔵 Builder working #35           1. sonnet   185 pts    │
-│  • ✅ Reviewer approved #301         2. opus     120 pts    │
-│  • 🏆 Merged #42 → +13 bounty       3. haiku     12 pts    │
+│  LIVE FEED                           LEADERBOARD             │
+│  • ◉ Builder working #35            1. sonnet   185 pts    │
+│  • ✓ Test passed #301               2. opus     120 pts    │
+│  • ★ Merged #42 → +13 pts           3. gemini    12 pts    │
 │                                                              │
 │  JUDGE VERDICT (PR #42):                                     │
-│  "Clean merge, solid spec, no rework. Full bounty."          │
+│  "Clean merge, solid spec, no rework. Full score."           │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## What it does
+## What it shows
 
-- **Live status** — every Loop handler sends events as it works
-  (`dev_start`, `review_done`, `qa_pass`, `merge_done`, etc.). The
-  dashboard renders them in real time.
-- **Bounty leaderboard** — points awarded per role per merged PR.
-  Different agents/models accumulate scores. Helps you see which
-  configurations work best.
-- **AI judge** — runs after every merge, reads the PR timeline, posts
-  a scorecard comment with role-level points + a one-sentence verdict.
-- **History tab** — full run table, timeline view, stats cards.
-- **Work queue** — cross-project pipeline backlog with priority ordering.
+- **Live status** — every stage of your pipeline reports events as it works (`build_start`, `test_done`, `deploy_failed`, etc.). The dashboard renders them in real time.
+- **Leaderboard** — points awarded per role per completed unit of work. Useful when comparing models, agents, or strategies.
+- **AI judge verdicts** *(optional)* — a downstream scorecard with role-level points and a one-sentence assessment per completed PR / pipeline run.
+- **History tab** — full event table, per-ticket timeline, stats cards.
+- **Action queue** — cross-project pipeline backlog ordered by attention needed.
+- **Cost / cycle-time analytics** — rework factor per ticket, per-stage cycle-time distributions, SLO breach tracking, capacity utilization.
+- **Logs panel** — tail your pipeline's handler log files without `ssh`-ing into the box.
 
-## Install
+## Quickstart
 
 ```bash
 git clone https://github.com/svv2014/loop-monitor.git
@@ -51,45 +45,24 @@ cp config/projects.yaml.example config/projects.yaml   # then edit
 ./run.sh
 ```
 
-`run.sh` is the server entrypoint — it starts the uvicorn process on port 18792.
-
 Open http://127.0.0.1:18792.
 
-## Configure your projects
+## Bring your own pipeline
 
-Loop-monitor needs a registry mapping project slugs to GitHub repositories.
-The slug is whatever your pipeline sends in the `project` field of its
-bounty events; the repo is `owner/repo` form for building issue/PR links.
+loop-monitor is wire-compatible with any system that can POST a small JSON payload per stage transition. Three configuration files cover the common reuse cases:
 
-Edit `config/projects.yaml` (gitignored, operator-local):
+### 1. `config/projects.yaml` — the project registry
 
 ```yaml
 projects:
-  my-app:      org/my-app
-  docs-site:   org/docs-site
-  ml-pipeline: org/ml-pipeline
+  web-app:      myorg/web-app
+  api-server:   myorg/api-server
+  ml-pipeline:  myorg/ml-pipeline
 ```
 
-Lookup order:
+Maps each project slug (the value your pipeline POSTs in the `project` field) to a GitHub `owner/repo`. Used for building issue/PR URLs across the dashboard. Lookup chain: `$LOOP_MONITOR_PROJECTS_CONFIG` env override → `./config/projects.yaml` → empty registry (server still runs, links absent).
 
-1. `$LOOP_MONITOR_PROJECTS_CONFIG` — absolute path override (useful for tests / CI)
-2. `./config/projects.yaml` — repo-relative default
-3. Empty registry — loop-monitor still runs, but project-specific UI links
-   (issue URLs, repo navigation) will be absent
-
-The registry is loaded once at startup; restart the server after editing.
-
-## Customize the role vocabulary
-
-By default loop-monitor displays the six Loop pipeline stages (`po`, `dev`,
-`qa`, `reviewer`, `merge`, `judge`) with their colors. If your pipeline
-emits a different vocabulary (e.g. `lint`, `build`, `test`, `deploy`),
-override it by copying the example:
-
-```bash
-cp config/roles.yaml.example config/roles.yaml
-# then edit
-```
+### 2. `config/roles.yaml` — the role/event vocabulary
 
 ```yaml
 roles:
@@ -107,50 +80,82 @@ roles:
     color: green
 ```
 
-Allowed colors: `violet`, `blue`, `cyan`, `amber`, `pink`, `green`,
-`indigo`, `red`, `gray`. Order matters — it determines display order in
-charts and filters. The frontend reads this list from `/api/config/roles`
-at startup; restart the server to pick up changes.
+Defines which stages your pipeline reports and how they display. Allowed colors: `violet`, `blue`, `cyan`, `amber`, `pink`, `green`, `indigo`, `red`, `gray`. Order determines display order in charts and filters. Lookup chain: `$LOOP_MONITOR_ROLES_CONFIG` env override → `./config/roles.yaml` → built-in Loop defaults (`po`, `dev`, `qa`, `reviewer`, `merge`, `judge`).
 
-If no config file exists, the built-in Loop defaults apply.
+### 3. The bounty event API — what your pipeline sends
+
+`POST /api/report` once per stage transition (fire-and-forget, server-side errors don't break your pipeline):
+
+```json
+{
+  "api": "1.0",
+  "event": "build_done",
+  "role": "build",
+  "agent": "ci-runner",
+  "model": "gha-ubuntu-22.04",
+  "project": "web-app",
+  "issue_num": 42,
+  "pr_num": 100,
+  "detail": "compiled 1247 modules in 38s",
+  "timestamp": "2026-05-13T10:32:00Z"
+}
+```
+
+Field semantics:
+- `event` — free-form event type. Convention: `<role>_start` / `<role>_done` / `<role>_failed` so the leaderboard, charts, and judge can group correctly.
+- `role` — must match a `roles[].id` in your `roles.yaml` (otherwise it renders as "unknown" with gray color).
+- `agent` / `model` — free-form identifiers for the implementation that produced the event. Used to slice the leaderboard.
+- `project` — must match a `projects.yaml` slug for issue/PR links to work.
+- `issue_num` / `pr_num` — optional; both can be present (an issue's resulting PR).
+- `detail` — optional free-form context.
+
+Loop core sends these automatically. For your own pipeline, send them from CI hooks, Lambda functions, container exit traps, etc. — anything that can `curl`.
 
 ## Wire it to Loop
 
-In your Loop core's `loop.env`:
+If you're running [Loop](https://github.com/svv2014/loop), wire it via `loop.env`:
 
 ```bash
 LOOP_BOUNTY_URL=http://127.0.0.1:18792
 ```
 
-That's it. Loop's handlers send fire-and-forget bounty events to the
-monitor. If the monitor is down, the pipeline is unaffected.
+That's it. Loop's handlers send events without further config. If loop-monitor is down, the pipeline is unaffected.
 
 ## API
 
 ### `POST /api/report` — bounty event ingestion (v1.0)
 
-Versioned payload per the bounty event API contract. Loop core sends
-this on every pipeline state change.
-
-```json
-{
-  "api": "1.0",
-  "core_version": "0.1.0",
-  "event": "dev_done",
-  "role": "dev",
-  "agent": "claude",
-  "model": "sonnet",
-  "project": "ppl",
-  "issue_num": 42,
-  "pr_num": 100,
-  "detail": "attempt 1/3",
-  "timestamp": "2026-04-27T04:00:00Z"
-}
-```
+See [Bring your own pipeline](#bring-your-own-pipeline) for the payload shape.
 
 - Accepts `api: "1.x"` — gracefully ignores unknown fields
 - Rejects future major versions (`api: "2.x"`) with HTTP 426
 - Missing `api` field treated as `"1.0"` legacy
+
+### `GET /api/config/roles` — operator-configured role vocabulary
+
+```json
+{
+  "roles": [
+    {"id": "lint",   "label": "Lint",   "color": "cyan"},
+    {"id": "build",  "label": "Build",  "color": "blue"},
+    {"id": "test",   "label": "Test",   "color": "amber"},
+    {"id": "deploy", "label": "Deploy", "color": "green"}
+  ]
+}
+```
+
+Returns the contents of `config/roles.yaml`, or built-in defaults if unconfigured. The frontend reads this at startup.
+
+### `GET /api/config/projects` — operator-configured project registry
+
+```json
+{
+  "projects": [
+    {"slug": "web-app",    "repo": "myorg/web-app"},
+    {"slug": "api-server", "repo": "myorg/api-server"}
+  ]
+}
+```
 
 ### `GET /api/health` — monitor status
 
@@ -163,9 +168,7 @@ this on every pipeline state change.
 }
 ```
 
-`core_version_counts` — map of Loop core version → event count, built from ingested events.
-
-## Data Retention
+## Data retention
 
 `bounty.db` grows at ~600 events/day. Run `scripts/prune.py` nightly to keep it bounded.
 
@@ -176,12 +179,12 @@ python scripts/prune.py --db bounty.db --dry-run   # preview without deleting
 
 **Default horizons:**
 
-| Table           | Env var                     | Default |
-|-----------------|-----------------------------|---------|
-| `events`        | `RETAIN_EVENTS_DAYS`        | 90 days |
+| Table           | Env var                     | Default  |
+|-----------------|-----------------------------|----------|
+| `events`        | `RETAIN_EVENTS_DAYS`        | 90 days  |
 | `verdicts`      | `RETAIN_VERDICTS_DAYS`      | 365 days |
 | `scores`        | `RETAIN_SCORES_DAYS`        | 365 days |
-| `issue_history` | `RETAIN_ISSUE_HISTORY_DAYS` | 90 days |
+| `issue_history` | `RETAIN_ISSUE_HISTORY_DAYS` | 90 days  |
 | `pipeline_runs` | `RETAIN_PIPELINE_RUNS_DAYS` | 365 days |
 
 Events tied to an in-progress pipeline run are never pruned, regardless of age.
@@ -206,16 +209,6 @@ Bumps VERSION, updates CHANGELOG.md, commits, tags, and creates a GitHub release
 
 Requires a clean working tree and `gh` CLI authenticated.
 
-### `scripts/check-version.sh`
-
-Compares the Loop core version in `$LOOP_ROOT/VERSION` against the latest GitHub release of `svv2014/loop`. Prints a notice if Loop core has a newer release. Throttled to once per hour via `/tmp/loop-version-last-notified`.
-
-Wire it into your Loop core startup or a cron job:
-
-```bash
-LOOP_ROOT=/path/to/loop ./scripts/check-version.sh
-```
-
 ### `scripts/dashboard.py` — terminal dashboard
 
 Stdlib-only TUI that polls `/api/active`, `/api/board`, and `/api/feed` and renders Active Workers, Project Status, and the last 5 feed events. Refreshes in place every `--interval` seconds (default 10); `Ctrl+C` exits cleanly. Use `--once` for a single snapshot suitable for piping or screenshots.
@@ -229,62 +222,25 @@ python3 scripts/dashboard.py --url http://host:18792 --once
 
 ## Security
 
-loop-monitor is **designed to bind to `127.0.0.1`**. The bounty event
-API has **no authentication**. Don't expose port 18792 to the network.
+loop-monitor is **designed to bind to `127.0.0.1`**. The bounty event API has **no authentication**. Don't expose port 18792 to the network.
 
-If you need network exposure, terminate auth at a reverse proxy. See
-[SECURITY.md](SECURITY.md) for the full trust model.
+If you need network exposure, terminate auth at a reverse proxy. See [SECURITY.md](SECURITY.md) for the full trust model.
 
 ### Logs panel
 
-The dashboard ships a read-only **Logs** tab that tails handler log files
-from `${LOOP_LOG_DIR:-~/.openclaw/workspace/logs/loop}/loop-<handler>.log`
-(via `GET /api/logs`). It also surfaces an orphaned-FD warning when the
-on-disk file size diverges materially from a running handler's open FD
-(see svv2014/loop#194).
+The dashboard ships a read-only **Logs** tab that tails handler log files from `${LOOP_LOG_DIR:-~/.openclaw/workspace/logs/loop}/loop-<handler>.log` (via `GET /api/logs`). For non-Loop pipelines, override `LOOP_LOG_DIR` to point at your own log directory.
 
-By default the endpoint is **loopback-only**: requests from any host
-other than `127.0.0.1`/`::1` receive `403 {"error":"logs disabled"}`. To
-expose the panel (e.g. behind a Tailscale-fronted proxy), set:
+By default the endpoint is **loopback-only**: requests from any host other than `127.0.0.1`/`::1` receive `403 {"error":"logs disabled"}`. To expose the panel (e.g. behind a Tailscale-fronted proxy), set:
 
 ```bash
 LOOPMON_EXPOSE_LOGS=1
 ```
 
-**Warning:** handler logs may contain `gh` tokens, agent stdout
-(including code snippets), and other potentially sensitive output.
-loop-monitor performs no secret stripping. If you enable
-`LOOPMON_EXPOSE_LOGS`, you are responsible for any exposure that
-results — terminate auth at a reverse proxy, restrict the network, or
-both.
+**Warning:** handler logs may contain auth tokens, agent stdout (including code snippets), and other potentially sensitive output. loop-monitor performs no secret stripping. If you enable `LOOPMON_EXPOSE_LOGS`, you are responsible for any exposure that results — terminate auth at a reverse proxy, restrict the network, or both.
 
-## Loop watch (temporary)
+## Contributing
 
-`scripts/loop-watch.sh` is a **temporary** observability helper for the
-post-stability shakedown (loop#283, #285–#289, bob#26). Every 2h it polls
-`/api/issues/cost`, `/api/active`, `/api/feed`, flags anomalies (high rework,
-repeated reviews, stranded issues, repeated `*_failed` events), applies a small
-set of safe label fixes (PR with red CI → `needs-rework`; orphan issue with a
-full spec → `needs-po`), and appends a comment to a tracking issue (`tracker`
-label, auto-created on first run).
-
-```bash
-# Try without changes first:
-scripts/loop-watch.sh --dry-run
-
-# Schedule via launchd (runs every 7200s):
-cp scripts/com.user.loop-watch.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.user.loop-watch.plist
-
-# Disable when the shakedown ends:
-launchctl unload ~/Library/LaunchAgents/com.user.loop-watch.plist
-rm ~/Library/LaunchAgents/com.user.loop-watch.plist
-```
-
-Env vars: `LOOP_MONITOR_URL` (default `http://localhost:18792`), `LOOP_WATCH_REPO`
-(default `svv2014/loop`), `LOOP_WATCH_TRACKER` (issue number to comment on; auto-created if unset).
-
-**Remove this section and the script once the pipeline is stable again.**
+loop-monitor is **operator-driven** — currently developed by an autonomous pipeline tied to a single operator account. External PRs are not accepted at this time. See [CONTRIBUTING.md](CONTRIBUTING.md) for details and alternatives (file an issue, fork freely under MIT, file security reports via GitHub Security Advisories).
 
 ## Development
 
@@ -296,9 +252,7 @@ pytest tests/
 
 ## Versioning
 
-[Semantic Versioning](https://semver.org). loop-monitor independently
-versioned from Loop core; the bounty event API contract is shared and
-versioned separately (currently `1.0`).
+[Semantic Versioning](https://semver.org). loop-monitor is independently versioned from Loop core; the bounty event API contract is shared and versioned separately (currently `1.0`).
 
 ## License
 
