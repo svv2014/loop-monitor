@@ -152,8 +152,10 @@ export default function TokenSpend() {
           Estimated · {cfg.tokens_per_event.toLocaleString()} tokens/event
           · ${cfg.cost_per_1m_input}/1M in · ${cfg.cost_per_1m_output}/1M out
           · configure via <span className="mono">LOOPMON_TOKENS_PER_EVENT</span>,{' '}
+          <span className="mono">LOOPMON_INPUT_RATIO</span>,{' '}
           <span className="mono">LOOPMON_COST_PER_1M_INPUT</span>,{' '}
           <span className="mono">LOOPMON_COST_PER_1M_OUTPUT</span>
+          {' '}· counts are event-based estimates and will differ from Anthropic admin API totals
         </div>
       </div>
     </div>
