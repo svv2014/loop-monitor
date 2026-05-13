@@ -47,12 +47,37 @@
 git clone https://github.com/svv2014/loop-monitor.git
 cd loop-monitor
 pip install -r requirements.txt
+cp config/projects.yaml.example config/projects.yaml   # then edit
 ./run.sh
 ```
 
 `run.sh` is the server entrypoint — it starts the uvicorn process on port 18792.
 
 Open http://127.0.0.1:18792.
+
+## Configure your projects
+
+Loop-monitor needs a registry mapping project slugs to GitHub repositories.
+The slug is whatever your pipeline sends in the `project` field of its
+bounty events; the repo is `owner/repo` form for building issue/PR links.
+
+Edit `config/projects.yaml` (gitignored, operator-local):
+
+```yaml
+projects:
+  my-app:      org/my-app
+  docs-site:   org/docs-site
+  ml-pipeline: org/ml-pipeline
+```
+
+Lookup order:
+
+1. `$LOOP_MONITOR_PROJECTS_CONFIG` — absolute path override (useful for tests / CI)
+2. `./config/projects.yaml` — repo-relative default
+3. Empty registry — loop-monitor still runs, but project-specific UI links
+   (issue URLs, repo navigation) will be absent
+
+The registry is loaded once at startup; restart the server after editing.
 
 ## Wire it to Loop
 

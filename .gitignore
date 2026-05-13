@@ -17,3 +17,6 @@ static/dist/
 
 # Visual regression diff artifacts (never committed)
 tests/visual/_artifacts/
+
+# Operator-local project registry (see config/projects.yaml.example)
+config/projects.yaml
