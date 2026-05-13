@@ -24,11 +24,15 @@ const SCREEN_KEYS: Record<string, string> = {
 export default function App() {
   const { screen: hashScreen, projectId: hashProjectId, navigateTo } = useHashRoute();
 
-  // Derive UI screen from hash. 'project' is a sub-state of 'projects' nav item.
-  const [navScreen, setNavScreen] = useState<string>(
-    hashScreen === 'project' ? 'projects' : hashScreen,
-  );
-  const [projectId, setProjectId] = useState<string | null>(hashProjectId);
+  // 'cost' is local-only — not stored in the hash — so we track it separately.
+  const [showCost, setShowCost] = useState(false);
+
+  // Derive nav screen from hash. 'project' is a sub-state of 'projects' nav item.
+  const hashNavScreen = hashScreen === 'project' ? 'projects' : hashScreen;
+  // When cost is active, override; otherwise use hash-derived value.
+  const navScreen = showCost ? 'cost' : hashNavScreen;
+  const projectId = hashProjectId;
+
   const [allProjectIds, setAllProjectIds] = useState<string[]>([]);
 
   // Fetch all known project IDs from /api/status for the project switcher
@@ -42,38 +46,34 @@ export default function App() {
       .catch(() => undefined);
   }, []);
 
-  // When the hash changes externally (back/forward), sync local state
+  // When hash changes externally (back/forward), clear cost overlay
   useEffect(() => {
-    if (hashScreen === 'project' && hashProjectId) {
-      setNavScreen('projects');
-      setProjectId(hashProjectId);
-    } else if (hashScreen !== 'project') {
-      setNavScreen(hashScreen);
-    }
-  }, [hashScreen, hashProjectId]);
+    setShowCost(false);
+  }, [hashScreen]);
 
   function handleNavChange(s: string) {
-    setNavScreen(s);
-    if (s !== 'projects') {
-      setProjectId(null);
-      if (s !== 'cost') {
-        navigateTo(s as 'overview' | 'queue' | 'projects' | 'workers' | 'project' | 'logs');
-      }
+    if (s === 'cost') {
+      setShowCost(true);
+    } else {
+      setShowCost(false);
+      navigateTo(s as 'overview' | 'queue' | 'projects' | 'workers' | 'project' | 'logs', null, {
+        drawer: null,
+        pushState: true,
+      });
     }
   }
 
   function handleProjectChange(id: string) {
-    setProjectId(id);
-    navigateTo('project', id);
+    setShowCost(false);
+    navigateTo('project', id, { drawer: null, pushState: true });
   }
 
   function handleBack() {
-    setProjectId(null);
-    navigateTo('overview');
-    setNavScreen('overview');
+    setShowCost(false);
+    navigateTo('overview', null, { pushState: true });
   }
 
-  const isProjectDetail = navScreen === 'projects' && projectId != null;
+  const isProjectDetail = hashNavScreen === 'projects' && projectId != null;
 
   const activeQuery = useQuery({
     queryKey: ['active'],
@@ -110,31 +110,31 @@ export default function App() {
       <TopBar events={events} online={online} version={version} />
       <NavRail screen={isProjectDetail ? 'projects' : navScreen} setScreen={handleNavChange} />
       <main className="main">
-        {isProjectDetail && projectId != null ? (
+        {showCost ? (
+          <Cost />
+        ) : isProjectDetail && projectId != null ? (
           <ProjectDetail
             projectId={projectId}
             allProjectIds={allProjectIds.length > 0 ? allProjectIds : [projectId]}
             onBack={handleBack}
             onProjectChange={handleProjectChange}
           />
-        ) : navScreen === 'overview' ? (
+        ) : hashNavScreen === 'overview' ? (
           <Overview />
-        ) : navScreen === 'queue' ? (
+        ) : hashNavScreen === 'queue' ? (
           <Queue />
-        ) : navScreen === 'workers' ? (
+        ) : hashNavScreen === 'workers' ? (
           <WorkerDetail />
-        ) : navScreen === 'logs' ? (
+        ) : hashNavScreen === 'logs' ? (
           <Logs />
-        ) : navScreen === 'cost' ? (
-          <Cost />
         ) : (
           <div style={{ padding: 'var(--pad-4)' }}>
             <p className="muted mono" style={{ fontSize: 12 }}>
-              {navScreen === 'projects'
-                ? 'Select a project — navigate via URL hash: #project=<id>'
-                : `${navScreen} screen coming soon`}
+              {hashNavScreen === 'projects'
+                ? 'Select a project — navigate via URL hash: #screen=project&project=<id>'
+                : `${hashNavScreen} screen coming soon`}
             </p>
-            {navScreen === 'projects' && allProjectIds.length > 0 && (
+            {hashNavScreen === 'projects' && allProjectIds.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--pad-2)', marginTop: 'var(--pad-3)' }}>
                 {allProjectIds.map(id => (
                   <button key={id} className="btn" onClick={() => handleProjectChange(id)}>{id}</button>

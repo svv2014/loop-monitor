@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchActionQueue } from '../lib/api';
 import type { QueueItem } from '../lib/types';
 import FailureInspector from '../components/FailureInspector';
+import Drawer from '../components/Drawer';
+import { useHashRoute } from '../router';
 
 function isFailureItem(item: QueueItem): boolean {
   return item.stage === 'needs-clarification' || item.reason === 'qa_fail_repeated';
@@ -48,75 +50,54 @@ function formatAge(seconds: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-// TODO(#122): Replace with canonical Drawer component when #122 lands.
-function InlineDrawer({ item, onClose }: { item: QueueItem; onClose: () => void }) {
+interface QueueItemDrawerContentProps {
+  item: QueueItem;
+  onClose: () => void;
+}
+
+function QueueItemDrawerContent({ item, onClose }: QueueItemDrawerContentProps) {
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'oklch(0 0 0 / 0.5)',
-        zIndex: 200,
-        display: 'flex',
-        justifyContent: 'flex-end',
-      }}
-    >
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          width: 360,
-          height: '100%',
-          background: 'var(--bg-2)',
-          borderLeft: '1px solid var(--border)',
-          padding: 'var(--pad-4)',
-          overflowY: 'auto',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 'var(--pad-3)',
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ margin: 0, fontSize: 13, fontFamily: 'var(--font-mono)', fontWeight: 500, color: 'var(--fg)' }}>
-            {item.title || `${item.kind} #${item.number}`}
-          </h2>
-          <button className="btn" onClick={onClose}>×</button>
-        </div>
-        <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px var(--pad-3)', fontSize: 12 }}>
-          <dt style={{ color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', alignSelf: 'center' }}>Project</dt>
-          <dd style={{ margin: 0 }}>{item.project}</dd>
-          <dt style={{ color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', alignSelf: 'center' }}>Stage</dt>
-          <dd style={{ margin: 0 }}>{item.stage}</dd>
-          <dt style={{ color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', alignSelf: 'center' }}>Age</dt>
-          <dd style={{ margin: 0 }} className="num">{formatAge(item.age_seconds)}</dd>
-          <dt style={{ color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', alignSelf: 'center' }}>Reason</dt>
-          <dd style={{ margin: 0 }}>{item.reason}</dd>
-          {item.threshold_seconds !== null && (
-            <>
-              <dt style={{ color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', alignSelf: 'center' }}>Threshold</dt>
-              <dd style={{ margin: 0 }} className="num">{formatAge(item.threshold_seconds)}</dd>
-            </>
-          )}
-          {item.loop_id !== null && (
-            <>
-              <dt style={{ color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', alignSelf: 'center' }}>Loop</dt>
-              <dd style={{ margin: 0 }} className="mono">{item.loop_id}</dd>
-            </>
-          )}
-        </dl>
-        {item.github_url && (
-          <a
-            href={item.github_url}
-            target="_blank"
-            rel="noreferrer"
-            className="btn primary"
-            style={{ display: 'inline-block', textAlign: 'center', textDecoration: 'none' }}
-          >
-            View on GitHub
-          </a>
-        )}
+    <>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h2 style={{ margin: 0, fontSize: 13, fontFamily: 'var(--font-mono)', fontWeight: 500, color: 'var(--fg)' }}>
+          {item.title || `${item.kind} #${item.number}`}
+        </h2>
+        <button className="btn" onClick={onClose}>×</button>
       </div>
-    </div>
+      <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px var(--pad-3)', fontSize: 12 }}>
+        <dt style={{ color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', alignSelf: 'center' }}>Project</dt>
+        <dd style={{ margin: 0 }}>{item.project}</dd>
+        <dt style={{ color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', alignSelf: 'center' }}>Stage</dt>
+        <dd style={{ margin: 0 }}>{item.stage}</dd>
+        <dt style={{ color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', alignSelf: 'center' }}>Age</dt>
+        <dd style={{ margin: 0 }} className="num">{formatAge(item.age_seconds)}</dd>
+        <dt style={{ color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', alignSelf: 'center' }}>Reason</dt>
+        <dd style={{ margin: 0 }}>{item.reason}</dd>
+        {item.threshold_seconds !== null && (
+          <>
+            <dt style={{ color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', alignSelf: 'center' }}>Threshold</dt>
+            <dd style={{ margin: 0 }} className="num">{formatAge(item.threshold_seconds)}</dd>
+          </>
+        )}
+        {item.loop_id !== null && (
+          <>
+            <dt style={{ color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', alignSelf: 'center' }}>Loop</dt>
+            <dd style={{ margin: 0 }} className="mono">{item.loop_id}</dd>
+          </>
+        )}
+      </dl>
+      {item.github_url && (
+        <a
+          href={item.github_url}
+          target="_blank"
+          rel="noreferrer"
+          className="btn primary"
+          style={{ display: 'inline-block', textAlign: 'center', textDecoration: 'none' }}
+        >
+          View on GitHub
+        </a>
+      )}
+    </>
   );
 }
 
@@ -183,6 +164,7 @@ export default function Queue() {
     refetchInterval: 5000,
   });
 
+  const { setDrawer } = useHashRoute();
   const [selected, setSelected] = useState<QueueItem | null>(null);
   const [filterProject, setFilterProject] = useState('');
   const [filterReason, setFilterReason] = useState('');
@@ -233,6 +215,16 @@ export default function Queue() {
     }
   }
 
+  function handleRowClick(item: QueueItem) {
+    setSelected(item);
+    setDrawer(`item:${item.project}:${item.kind}:${item.number}`);
+  }
+
+  function handleClose() {
+    setSelected(null);
+    setDrawer(null);
+  }
+
   if (isLoading) {
     return <div className="muted" style={{ padding: 'var(--pad-4)' }}>Loading…</div>;
   }
@@ -250,7 +242,7 @@ export default function Queue() {
         {stuckItems.length === 0 ? (
           <div className="muted" style={{ padding: 'var(--pad-3) 0' }}>No stuck items</div>
         ) : (
-          <QueueTable items={stuckItems} onRowClick={setSelected} />
+          <QueueTable items={stuckItems} onRowClick={handleRowClick} />
         )}
       </section>
 
@@ -285,7 +277,7 @@ export default function Queue() {
         ) : (
           <QueueTable
             items={allFiltered}
-            onRowClick={setSelected}
+            onRowClick={handleRowClick}
             sortCol={sortCol}
             sortDir={sortDir}
             onSort={handleSort}
@@ -300,10 +292,12 @@ export default function Queue() {
           number={selected.number}
           title={selected.title}
           githubUrl={selected.github_url}
-          onClose={() => setSelected(null)}
+          onClose={handleClose}
         />
       ) : selected ? (
-        <InlineDrawer item={selected} onClose={() => setSelected(null)} />
+        <Drawer open={true} onClose={handleClose}>
+          <QueueItemDrawerContent item={selected} onClose={handleClose} />
+        </Drawer>
       ) : null}
     </div>
   );

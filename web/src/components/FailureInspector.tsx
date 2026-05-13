@@ -1,7 +1,8 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchFailureContext } from '../lib/api';
 import type { FailureContext } from '../lib/types';
+import Drawer from './Drawer';
 
 interface Props {
   project: string;
@@ -39,7 +40,6 @@ const DT_STYLE: React.CSSProperties = {
 
 export default function FailureInspector({ project, kind, number, title, githubUrl, onClose }: Props) {
   const [copied, setCopied] = useState(false);
-  const overlayRef = useRef<HTMLDivElement>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['failure', project, kind, number],
@@ -47,14 +47,6 @@ export default function FailureInspector({ project, kind, number, title, githubU
     staleTime: Infinity,
     refetchOnWindowFocus: false,
   });
-
-  function handleOverlayClick(e: React.MouseEvent<HTMLDivElement>) {
-    if (e.target === overlayRef.current) onClose();
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Escape') onClose();
-  }
 
   async function handleCopy() {
     if (!data?.excerpt) return;
@@ -64,78 +56,39 @@ export default function FailureInspector({ project, kind, number, title, githubU
   }
 
   return (
-    <div
-      ref={overlayRef}
-      onClick={handleOverlayClick}
-      onKeyDown={handleKeyDown}
-      tabIndex={-1}
-      aria-modal="true"
-      role="dialog"
-      aria-label="Failure inspector"
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'oklch(0 0 0 / 0.5)',
-        zIndex: 200,
-        display: 'flex',
-        justifyContent: 'flex-end',
-      }}
-    >
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          width: 400,
-          height: '100%',
-          background: 'var(--bg-2)',
-          borderLeft: '1px solid var(--border)',
-          padding: 'var(--pad-4)',
-          overflowY: 'auto',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 'var(--pad-3)',
-        }}
-      >
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ margin: 0, fontSize: 13, fontFamily: 'var(--font-mono)', fontWeight: 500, color: 'var(--fg)' }}>
-            {title || `${kind} #${number}`}
-          </h2>
-          <button className="btn" onClick={onClose} aria-label="Close">×</button>
-        </div>
+    <Drawer open={true} onClose={onClose} title={title || `${kind} #${number}`}>
+      {/* Metadata */}
+      <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px var(--pad-3)', fontSize: 12 }}>
+        <dt style={DT_STYLE}>Project</dt>
+        <dd style={{ margin: 0 }}>{project}</dd>
+        <dt style={DT_STYLE}>Item</dt>
+        <dd style={{ margin: 0 }} className="mono">{kind} #{number}</dd>
+      </dl>
 
-        {/* Metadata */}
-        <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px var(--pad-3)', fontSize: 12 }}>
-          <dt style={DT_STYLE}>Project</dt>
-          <dd style={{ margin: 0 }}>{project}</dd>
-          <dt style={DT_STYLE}>Item</dt>
-          <dd style={{ margin: 0 }} className="mono">{kind} #{number}</dd>
-        </dl>
+      <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: 0 }} />
 
-        <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: 0 }} />
+      {/* Failure context */}
+      {isLoading ? (
+        <div className="muted" style={{ fontSize: 12 }}>Loading failure context…</div>
+      ) : !data || data.excerpt === null ? (
+        <EmptyState logPath={data?.log_path ?? null} />
+      ) : (
+        <FailureDetail data={{ ...data, excerpt: data.excerpt }} copied={copied} onCopy={handleCopy} />
+      )}
 
-        {/* Failure context */}
-        {isLoading ? (
-          <div className="muted" style={{ fontSize: 12 }}>Loading failure context…</div>
-        ) : !data || data.excerpt === null ? (
-          <EmptyState logPath={data?.log_path ?? null} />
-        ) : (
-          <FailureDetail data={{ ...data, excerpt: data.excerpt }} copied={copied} onCopy={handleCopy} />
-        )}
-
-        {/* GitHub link */}
-        {githubUrl && (
-          <a
-            href={githubUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="btn primary"
-            style={{ display: 'inline-block', textAlign: 'center', textDecoration: 'none' }}
-          >
-            View on GitHub
-          </a>
-        )}
-      </div>
-    </div>
+      {/* GitHub link */}
+      {githubUrl && (
+        <a
+          href={githubUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="btn primary"
+          style={{ display: 'inline-block', textAlign: 'center', textDecoration: 'none' }}
+        >
+          View on GitHub
+        </a>
+      )}
+    </Drawer>
   );
 }
 

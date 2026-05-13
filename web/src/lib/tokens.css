@@ -52,6 +52,9 @@
   --pad-5: calc(28px * var(--d));
 
   --hairline: 1px;
+
+  /* Overlay scrim */
+  --scrim: oklch(0 0 0 / 0.5);
 }
 
 * { box-sizing: border-box; }
