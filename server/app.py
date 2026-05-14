@@ -31,6 +31,7 @@ from server.routes import (  # noqa: E402
     scanner_state,
     slos,
     stats,
+    timeline,
 )
 
 app.include_router(analytics.router)
@@ -48,6 +49,7 @@ app.include_router(logs.router)
 app.include_router(scanner_state.router)
 app.include_router(slos.router)
 app.include_router(config.router)
+app.include_router(timeline.router)
 
 app.mount("/", StaticFiles(directory="static/dist", html=True), name="webapp")
 
