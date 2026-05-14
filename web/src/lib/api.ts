@@ -26,6 +26,7 @@ import type {
   CycleTimeAnalyticsResponse,
   SloConfig,
   CostTrend,
+  QualityAnalyticsResponse,
 } from './types';
 import * as fx from './fixtures';
 
@@ -210,6 +211,10 @@ export async function fetchCycleTimes(project: string): Promise<CycleTimesRespon
 
 export async function fetchAnalyticsCycleTime(days = 30): Promise<CycleTimeAnalyticsResponse> {
   return get<CycleTimeAnalyticsResponse>(`/api/analytics/cycle_time?days=${days}`);
+}
+
+export async function fetchAnalyticsQuality(days = 30): Promise<QualityAnalyticsResponse> {
+  return get<QualityAnalyticsResponse>(`/api/analytics/quality?days=${days}`);
 }
 
 export async function fetchSlo(project: string): Promise<SloConfig> {

@@ -1,4 +1,5 @@
 import CycleTimePanel from '../panels/CycleTime';
+import QualityPanel from '../panels/Quality';
 
 export default function Analytics() {
   return (
@@ -8,6 +9,7 @@ export default function Analytics() {
       </div>
       <div style={{ padding: 'var(--pad-4)', display: 'grid', gap: 'var(--pad-3)' }}>
         <CycleTimePanel days={30} />
+        <QualityPanel days={30} />
       </div>
     </div>
   );
