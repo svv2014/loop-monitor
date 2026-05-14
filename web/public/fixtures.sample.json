@@ -1,0 +1,27 @@
+{
+  "projects": [
+    { "id": "project-a", "repo": "example-org/project-a", "color": "po" },
+    { "id": "project-b", "repo": "example-org/project-b", "color": "dev" },
+    { "id": "project-c", "repo": "example-org/project-c", "color": "qa" },
+    { "id": "project-d", "repo": "example-org/project-d", "color": "reviewer" }
+  ],
+  "workers": [
+    { "project": "project-a", "role": "dev",      "model": "sonnet-4-6", "event_type": "dev_start",   "issue_number": 142, "pr_number": null, "detail": "#142 implement retry backoff", "age_seconds": 124 },
+    { "project": "project-b", "role": "reviewer", "model": "opus-4-1",   "event_type": "review_start","issue_number": 138, "pr_number": 138,  "detail": "#138 review PR diff",          "age_seconds": 47 },
+    { "project": "project-c", "role": "po",       "model": "gpt-5",      "event_type": "po_start",    "issue_number": 150, "pr_number": null, "detail": "#150 spec breakdown",          "age_seconds": 12 },
+    { "project": "project-d", "role": "qa",       "model": "haiku-4-5",  "event_type": "qa_start",    "issue_number": 101, "pr_number": null, "detail": "#101 run regression suite",    "age_seconds": 8 },
+    { "project": "project-a", "role": "judge",    "model": "gemini-2-5", "event_type": "judge_start", "issue_number": 88,  "pr_number": null, "detail": "#88 verdict scoring",          "age_seconds": 2 }
+  ],
+  "queueTitles": [
+    "rate-limit handler exceeds budget",
+    "flaky test in pipeline_runs",
+    "spec drift on /api/report v1.2",
+    "judge gives low verdict on small diffs",
+    "memory leak in event ingest loop",
+    "queue starvation under burst load",
+    "webhook timeout retries unbounded",
+    "leaderboard ranks tied agents wrong",
+    "duplicate events from project-b",
+    "missing duration on judge_done"
+  ]
+}

@@ -7,6 +7,9 @@ export default defineConfig({
   build: {
     outDir: '../static/dist',
     emptyOutDir: true,
+    // ES2022 → top-level await is supported (used by src/lib/fixtures.ts to
+    // load the fixture payload at module init).
+    target: 'es2022',
   },
   server: {
     proxy: {

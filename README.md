@@ -31,6 +31,39 @@ cp config/projects.yaml.example config/projects.yaml   # then edit
 
 Open http://127.0.0.1:18792.
 
+### Customising fixture data
+
+Screenshots, Storybook, and the design prototype render from a generic fixture
+payload (`web/public/fixtures.sample.json` for the React app,
+`design/new-design/data.sample.js` for the prototype). To use your own project
+names without modifying the repo, drop a sibling override:
+
+- `web/public/fixtures.local.json` — same schema as `fixtures.sample.json`;
+  loaded preferentially at runtime when present.
+- `design/new-design/data.local.js` — assigns `window.PipelineDataPayload` with
+  the same shape as `data.sample.js`.
+
+Both override paths are gitignored. A CI check
+(`scripts/check-no-operator-leaks.py`, configured via
+`scripts/.operator-names.local.txt`) prevents accidental commits of operator
+names back into the tracked tree.
+
+### `scripts/loop-watch.sh` (optional launchd agent)
+
+A bundled launchd plist (`scripts/com.user.loop-watch.plist`) periodically
+runs `loop-watch.sh` for ad-hoc observability. Because the plist needs an
+absolute path to this checkout, it ships with a `{{LOOP_MONITOR_ROOT}}`
+placeholder. Install with:
+
+```bash
+./scripts/install-loop-watch.sh           # auto-detects repo root
+./scripts/install-loop-watch.sh /path/to/loop-monitor   # explicit
+```
+
+The script substitutes the placeholder and copies the result to
+`~/Library/LaunchAgents/`. Unload with
+`launchctl unload ~/Library/LaunchAgents/com.user.loop-watch.plist`.
+
 ## Bring your own pipeline
 
 loop-monitor is wire-compatible with any system that can POST a small JSON payload per stage transition. Three configuration files cover the common reuse cases:

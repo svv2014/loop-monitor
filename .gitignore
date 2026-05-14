@@ -23,3 +23,10 @@ config/projects.yaml
 
 # Operator-local role vocabulary (see config/roles.yaml.example)
 config/roles.yaml
+
+# Operator-local design-prototype payload (see design/new-design/data.sample.js)
+design/new-design/data.local.js
+
+# Operator-only allow-list for the no-leak check
+scripts/.operator-names.local.txt
+
