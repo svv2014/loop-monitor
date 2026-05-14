@@ -11,7 +11,7 @@ import Leaderboard from '../panels/Leaderboard';
 import ActivityFeed from '../panels/ActivityFeed';
 import EventGlyph from '../components/EventGlyph';
 import RoleTag from '../components/RoleTag';
-import { relTime, durationFmt, matchesProjectFilter } from '../lib/utils';
+import { relTime, durationFmt, matchesProjectFilter, parseServerTs } from '../lib/utils';
 import Charts from '../panels/Charts';
 import ClaudeUsage from '../panels/ClaudeUsage';
 import { useRoleIds } from '../lib/useRoles';
@@ -141,7 +141,7 @@ export default function Overview({ globalProjectFilter }: OverviewProps) {
             <div className="panel-h"><span>Completed jobs · last 30</span></div>
             <div style={{ overflow: 'auto', maxHeight: 480 }}>
               {completed.map(e => {
-                const ts = new Date(e.created_at).getTime();
+                const ts = parseServerTs(e.created_at);
                 const durMs = (e.duration_seconds ?? 0) * 1000;
                 return (
                   <div key={e.id} className="feed-row">
