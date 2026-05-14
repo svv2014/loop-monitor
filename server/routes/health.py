@@ -1,5 +1,6 @@
 import sqlite3
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends
@@ -10,6 +11,10 @@ from server.db import db_dep
 router = APIRouter()
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+_REMOTE_URL = "https://github.com/svv2014/loop-monitor.git"
+_LATEST_SHA_TTL = 60  # seconds
+
+_latest_sha_cache: dict = {"sha": None, "fetched_at": None}
 
 
 def _git_sha() -> str:
@@ -29,6 +34,34 @@ def _git_sha() -> str:
     return sha or "unknown"
 
 
+def _latest_main_sha() -> str:
+    """Fetch the current HEAD sha of origin/main via git ls-remote. Cached for TTL seconds."""
+    fetched: datetime | None = _latest_sha_cache["fetched_at"]
+    if fetched is not None and _latest_sha_cache["sha"] is not None:
+        age = (datetime.now(timezone.utc) - fetched).total_seconds()
+        if age < _LATEST_SHA_TTL:
+            return _latest_sha_cache["sha"]  # type: ignore[return-value]
+
+    try:
+        result = subprocess.run(
+            ["git", "ls-remote", _REMOTE_URL, "refs/heads/main"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except Exception:
+        return _latest_sha_cache["sha"] or "unknown"
+
+    if result.returncode != 0 or not result.stdout.strip():
+        return _latest_sha_cache["sha"] or "unknown"
+
+    full_sha = result.stdout.split()[0]
+    sha = full_sha[:7]
+    _latest_sha_cache["sha"] = sha
+    _latest_sha_cache["fetched_at"] = datetime.now(timezone.utc)
+    return sha
+
+
 @router.get("/api/health")
 def health(conn: sqlite3.Connection = Depends(db_dep)):
     rows = conn.execute(
@@ -43,6 +76,7 @@ def health(conn: sqlite3.Connection = Depends(db_dep)):
         "status": "ok",
         "monitor_version": MONITOR_VERSION,
         "git_sha": _git_sha(),
+        "latest_main_sha": _latest_main_sha(),
         "supported_bounty_api": f"{SUPPORTED_API_MAJOR}.x",
         "core_version_counts": core_version_counts,
         "loop_ids": loop_ids,

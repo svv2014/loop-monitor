@@ -92,6 +92,34 @@ def test_health_git_sha_field(isolated_client):
     assert sha == "unknown" or re.match(r"^[0-9a-f]{7}$", sha)
 
 
+def test_health_latest_main_sha_field(isolated_client):
+    resp = isolated_client.get("/api/health")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "latest_main_sha" in data
+    sha = data["latest_main_sha"]
+    assert sha == "unknown" or re.match(r"^[0-9a-f]{7}$", sha)
+
+
+def test_health_latest_main_sha_cached(isolated_client, monkeypatch):
+    import server.routes.health as health_mod
+
+    call_count = 0
+
+    def fake_fetch():
+        nonlocal call_count
+        call_count += 1
+        return "abc1234"
+
+    monkeypatch.setattr(health_mod, "_latest_main_sha", fake_fetch)
+
+    isolated_client.get("/api/health")
+    isolated_client.get("/api/health")
+
+    resp = isolated_client.get("/api/health")
+    assert resp.status_code == 200
+
+
 def test_health_loop_ids_empty_db(isolated_client):
     resp = isolated_client.get("/api/health")
     assert resp.status_code == 200

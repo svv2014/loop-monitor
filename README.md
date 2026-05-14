@@ -31,6 +31,41 @@ cp config/projects.yaml.example config/projects.yaml   # then edit
 
 Open http://127.0.0.1:18792.
 
+## Production service setup (macOS LaunchAgent)
+
+For a stable production install, run the service from a **dedicated checkout** that your pipeline never writes to. This decouples service uptime from any branch checkouts or in-progress work in the pipeline working tree.
+
+### One-time bootstrap
+
+```bash
+# 1. Clone to a dedicated location outside your pipeline working tree
+git clone https://github.com/svv2014/loop-monitor.git \
+    ~/.openclaw/workspace/services/loop-monitor
+
+# 2. Build the frontend
+cd ~/.openclaw/workspace/services/loop-monitor/web
+npm ci && npm run build
+cd ..
+
+# 3. Install and load the LaunchAgent
+cp scripts/com.user.loop-monitor.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.user.loop-monitor.plist
+launchctl start com.user.loop-monitor
+```
+
+The service starts at `http://127.0.0.1:18792`. The dashboard's TopBar shows an update banner when the running commit differs from the latest `main`.
+
+### Redeploy (pull latest main)
+
+```bash
+# From any checkout of the repo:
+scripts/redeploy.sh
+```
+
+This fetches `origin/main`, resets the service checkout, reinstalls dependencies, rebuilds the frontend, and restarts via `launchctl kickstart`. Exits non-zero on any failure.
+
+Override the service directory with `LOOP_MONITOR_SERVICE_DIR=/path/to/checkout scripts/redeploy.sh`.
+
 ## Bring your own pipeline
 
 loop-monitor is wire-compatible with any system that can POST a small JSON payload per stage transition. Three configuration files cover the common reuse cases:
