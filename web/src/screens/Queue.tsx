@@ -1,10 +1,27 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchActionQueue } from '../lib/api';
 import type { QueueItem } from '../lib/types';
 import FailureInspector from '../components/FailureInspector';
 import Drawer from '../components/Drawer';
 import { useHashRoute } from '../router';
+
+export const PAGE_SIZE = 20;
+
+export function parsePageFromHash(): number {
+  const hash = window.location.hash.replace(/^#/, '');
+  const match = hash.match(/(?:^|[?&])page=(\d+)/);
+  if (match) {
+    const n = parseInt(match[1], 10);
+    return isNaN(n) || n < 1 ? 1 : n;
+  }
+  return 1;
+}
+
+function writePageToHash(page: number): void {
+  const base = 'queue';
+  window.location.hash = page > 1 ? `${base}?page=${page}` : base;
+}
 
 function isFailureItem(item: QueueItem): boolean {
   return item.stage === 'needs-clarification' || item.reason === 'qa_fail_repeated';
@@ -175,10 +192,17 @@ export default function Queue({ globalProjectFilter }: QueueProps) {
   const [filterLoop, setFilterLoop] = useState('');
   const [sortCol, setSortCol] = useState<SortCol>('age_seconds');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [page, setPage] = useState<number>(parsePageFromHash);
 
   useEffect(() => {
     setFilterProject(globalProjectFilter ?? '');
+    setPage(1);
   }, [globalProjectFilter]);
+
+  const goToPage = useCallback((p: number) => {
+    setPage(p);
+    writePageToHash(p);
+  }, []);
 
   const projects = useMemo(
     () => [...new Set(items.map(i => i.project))].sort(),
@@ -214,6 +238,17 @@ export default function Queue({ globalProjectFilter }: QueueProps) {
     [items, filterProject, filterReason, filterLoop, sortCol, sortDir],
   );
 
+  const totalPages = Math.max(1, Math.ceil(allFiltered.length / PAGE_SIZE));
+  const clampedPage = Math.min(page, totalPages);
+  const pageItems = allFiltered.slice((clampedPage - 1) * PAGE_SIZE, clampedPage * PAGE_SIZE);
+
+  // Clamp page when filter changes reduce total pages
+  useEffect(() => {
+    if (page > totalPages) {
+      goToPage(totalPages);
+    }
+  }, [totalPages, page, goToPage]);
+
   function handleSort(col: SortCol) {
     if (col === sortCol) {
       setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
@@ -221,6 +256,7 @@ export default function Queue({ globalProjectFilter }: QueueProps) {
       setSortCol(col);
       setSortDir('asc');
     }
+    goToPage(1);
   }
 
   function handleRowClick(item: QueueItem) {
@@ -262,18 +298,18 @@ export default function Queue({ globalProjectFilter }: QueueProps) {
         </div>
 
         <div style={{ display: 'flex', gap: 'var(--pad-2)', marginBottom: 'var(--pad-3)', flexWrap: 'wrap' }}>
-          <select className="btn" value={filterProject} onChange={e => setFilterProject(e.target.value)}>
+          <select className="btn" value={filterProject} onChange={e => { setFilterProject(e.target.value); goToPage(1); }}>
             <option value="">All projects</option>
             {projects.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
-          <select className="btn" value={filterReason} onChange={e => setFilterReason(e.target.value)}>
+          <select className="btn" value={filterReason} onChange={e => { setFilterReason(e.target.value); goToPage(1); }}>
             <option value="">All reasons</option>
             <option value="stuck_label">stuck_label</option>
             <option value="timeout">timeout</option>
             <option value="qa_fail_repeated">qa_fail_repeated</option>
           </select>
           {showLoopFilter && (
-            <select className="btn" value={filterLoop} onChange={e => setFilterLoop(e.target.value)}>
+            <select className="btn" value={filterLoop} onChange={e => { setFilterLoop(e.target.value); goToPage(1); }}>
               <option value="">All loops</option>
               {loops.map(l => <option key={l} value={l}>{l}</option>)}
             </select>
@@ -283,13 +319,34 @@ export default function Queue({ globalProjectFilter }: QueueProps) {
         {allFiltered.length === 0 ? (
           <div className="muted" style={{ padding: 'var(--pad-3) 0' }}>No items</div>
         ) : (
-          <QueueTable
-            items={allFiltered}
-            onRowClick={handleRowClick}
-            sortCol={sortCol}
-            sortDir={sortDir}
-            onSort={handleSort}
-          />
+          <>
+            <QueueTable
+              items={pageItems}
+              onRowClick={handleRowClick}
+              sortCol={sortCol}
+              sortDir={sortDir}
+              onSort={handleSort}
+            />
+            {allFiltered.length > PAGE_SIZE && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--pad-2)', marginTop: 'var(--pad-3)' }}>
+                <button
+                  className="btn"
+                  onClick={() => goToPage(clampedPage - 1)}
+                  disabled={clampedPage <= 1}
+                >
+                  &lt; Prev
+                </button>
+                <span className="meta">Page {clampedPage} of {totalPages}</span>
+                <button
+                  className="btn"
+                  onClick={() => goToPage(clampedPage + 1)}
+                  disabled={clampedPage >= totalPages}
+                >
+                  Next &gt;
+                </button>
+              </div>
+            )}
+          </>
         )}
       </section>
 

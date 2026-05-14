@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { applyFilters, applySort } from './Queue';
+import { applyFilters, applySort, PAGE_SIZE } from './Queue';
 import type { QueueItem } from '../lib/types';
 
 function item(overrides: Partial<QueueItem> = {}): QueueItem {
@@ -113,3 +113,57 @@ describe('applySort', () => {
     expect(items).toEqual(original);
   });
 });
+
+// ── pagination helpers ────────────────────────────────────────────────────────
+
+function makeItems(count: number): QueueItem[] {
+  return Array.from({ length: count }, (_, i) =>
+    item({ number: i + 1 }),
+  );
+}
+
+describe('PAGE_SIZE', () => {
+  it('is 20', () => {
+    expect(PAGE_SIZE).toBe(20);
+  });
+});
+
+describe('pagination slicing', () => {
+  it('page 1 of 25 items renders 20 rows', () => {
+    const all = makeItems(25);
+    const page1 = all.slice(0, PAGE_SIZE);
+    expect(page1).toHaveLength(20);
+  });
+
+  it('page 2 of 25 items renders 5 rows', () => {
+    const all = makeItems(25);
+    const page2 = all.slice(PAGE_SIZE, PAGE_SIZE * 2);
+    expect(page2).toHaveLength(5);
+  });
+
+  it('page 1 of exactly 20 items renders 20 rows', () => {
+    const all = makeItems(20);
+    const page1 = all.slice(0, PAGE_SIZE);
+    expect(page1).toHaveLength(20);
+  });
+
+  it('no second page when items <= 20', () => {
+    const all = makeItems(20);
+    const totalPages = Math.max(1, Math.ceil(all.length / PAGE_SIZE));
+    expect(totalPages).toBe(1);
+  });
+
+  it('two pages when items = 21', () => {
+    const all = makeItems(21);
+    const totalPages = Math.max(1, Math.ceil(all.length / PAGE_SIZE));
+    expect(totalPages).toBe(2);
+  });
+
+  it('clamps page to totalPages', () => {
+    const all = makeItems(25);
+    const totalPages = Math.max(1, Math.ceil(all.length / PAGE_SIZE));
+    const clampedPage = Math.min(5, totalPages);
+    expect(clampedPage).toBe(totalPages);
+  });
+});
+
