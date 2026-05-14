@@ -164,11 +164,12 @@ class _FakeNon200Resp:
 
 
 def test_event_queue_non200_marks_down(isolated_client, monkeypatch):
+    now = datetime.now(timezone.utc).isoformat()
     monkeypatch.setattr(
         "server.routes.health.subprocess.run",
         lambda *a, **kw: _make_loop_result(stdout=json.dumps({
-            "scanner":      {"last_tick_iso": datetime.now(timezone.utc).isoformat(), "interval_seconds": 1800, "detail": ""},
-            "orchestrator": {"last_tick_iso": datetime.now(timezone.utc).isoformat(), "interval_seconds": 900,  "detail": ""},
+            "scanner":      {"last_tick_iso": now, "interval_seconds": 1800, "detail": ""},
+            "orchestrator": {"last_tick_iso": now, "interval_seconds": 900,  "detail": ""},
         })),
     )
     monkeypatch.setattr("server.routes.health.urllib.request.urlopen", lambda *a, **kw: _FakeNon200Resp())
@@ -184,11 +185,12 @@ def test_event_queue_connection_error_marks_down(isolated_client, monkeypatch):
     def _raise(*a, **kw):
         raise OSError("Connection refused")
 
+    now = datetime.now(timezone.utc).isoformat()
     monkeypatch.setattr(
         "server.routes.health.subprocess.run",
         lambda *a, **kw: _make_loop_result(stdout=json.dumps({
-            "scanner":      {"last_tick_iso": datetime.now(timezone.utc).isoformat(), "interval_seconds": 1800, "detail": ""},
-            "orchestrator": {"last_tick_iso": datetime.now(timezone.utc).isoformat(), "interval_seconds": 900,  "detail": ""},
+            "scanner":      {"last_tick_iso": now, "interval_seconds": 1800, "detail": ""},
+            "orchestrator": {"last_tick_iso": now, "interval_seconds": 900,  "detail": ""},
         })),
     )
     monkeypatch.setattr("server.routes.health.urllib.request.urlopen", _raise)
