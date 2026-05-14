@@ -59,14 +59,16 @@ export interface FeedParams {
   loop_id?: string;
   role?: string;
   status?: string;
+  limit?: number;
 }
 
 export async function fetchFeed(params: FeedParams = {}): Promise<FeedItem[]> {
   if (isFixtureMode()) return fx.getFixtureFeed();
   const p = new URLSearchParams();
-  if (params.loop_id) p.set('loop_id', params.loop_id);
-  if (params.role)    p.set('role', params.role);
-  if (params.status)  p.set('status', params.status);
+  if (params.loop_id)       p.set('loop_id', params.loop_id);
+  if (params.role)          p.set('role', params.role);
+  if (params.status)        p.set('status', params.status);
+  if (params.limit != null) p.set('limit', String(params.limit));
   const qs = p.size ? `?${p.toString()}` : '';
   return get<FeedItem[]>(`/api/feed${qs}`);
 }
