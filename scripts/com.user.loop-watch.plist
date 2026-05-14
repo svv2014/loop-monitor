@@ -13,8 +13,11 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/vadim/.openclaw/workspace/projects/loop-monitor/scripts/loop-watch.sh</string>
+        <string>/Users/vadim/.openclaw/workspace/services/loop-monitor/scripts/loop-watch.sh</string>
     </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/vadim/.openclaw/workspace/services/loop-monitor</string>
 
     <key>StartInterval</key>
     <integer>7200</integer>

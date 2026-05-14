@@ -30,9 +30,14 @@ function useTick(ms = 1000) {
   }, [ms]);
 }
 
+const BANNER_DISMISS_KEY = 'lm_sha_banner_dismissed_for';
+
 export default function TopBar({ events, online, version, gitSha, latestMainSha, allProjectIds, projectFilter, onProjectFilterChange }: TopBarProps) {
   useTick(1000);
-  const [bannerDismissed, setBannerDismissed] = useState(false);
+  // Store the mismatch key (running:latest) that was dismissed — reappears when either sha changes.
+  const [dismissedFor, setDismissedFor] = useState(
+    () => sessionStorage.getItem(BANNER_DISMISS_KEY) ?? '',
+  );
   const now = new Date();
   const eventsLastMin = events.filter(e => Date.now() - e.ts < 60_000).length;
   const isFiltered = !!projectFilter;
@@ -44,7 +49,8 @@ export default function TopBar({ events, online, version, gitSha, latestMainSha,
     latestMainSha !== 'unknown' &&
     gitSha !== latestMainSha;
 
-  const showBanner = shaMismatch && !bannerDismissed;
+  const mismatchKey = shaMismatch ? `${gitSha}:${latestMainSha}` : '';
+  const showBanner = shaMismatch && dismissedFor !== mismatchKey;
 
   return (
     <>
@@ -103,7 +109,10 @@ export default function TopBar({ events, online, version, gitSha, latestMainSha,
             Run <code style={{ background: 'var(--bg-2)', padding: '1px 5px', borderRadius: 3 }}>scripts/redeploy.sh</code> to update.
           </span>
           <button
-            onClick={() => setBannerDismissed(true)}
+            onClick={() => {
+              sessionStorage.setItem(BANNER_DISMISS_KEY, mismatchKey);
+              setDismissedFor(mismatchKey);
+            }}
             style={{
               background: 'none',
               border: 'none',
