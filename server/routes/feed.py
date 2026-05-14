@@ -113,7 +113,12 @@ def feed(
             where_clauses.append("(lower(role) = lower(?) OR event_type = 'judge')")
             params.append(role)
         else:
-            where_clauses.append("lower(role) = lower(?)")
+            # Bug fix: exclude legacy-judge rows from non-judge role filters.
+            # Legacy rows have role='dev' + event_type='judge' in the DB and get
+            # remapped to role='judge' at read time. Without this filter,
+            # `role=dev` queries leaked legacy-judge rows that then rendered as
+            # 'judge' — confusing for any UI consumer.
+            where_clauses.append("lower(role) = lower(?) AND event_type != 'judge'")
             params.append(role)
 
     if status_lower == 'fail':

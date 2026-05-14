@@ -111,3 +111,37 @@ def test_timeline_remaps_legacy_judge_pr_rows(isolated_client):
     assert events[0]["event_type"] == "judge_done"
     assert events[0]["issue_number"] == 213
     assert events[0]["pr_number"] == 17
+
+
+def test_events_graph_groups_legacy_judge_separately_from_dev_done(isolated_client):
+    """Regression: in the same hour, a legacy judge row and a dev_done row
+    must produce TWO separate buckets — judge count=1, dev count=1 — not
+    one merged bucket. The fix changes GROUP BY to use the CASE expression
+    directly (not the alias `role`) so SQLite groups by the projected value."""
+    import sqlite3 as _sqlite3
+    conn = _sqlite3.connect(server.db.DB_PATH)
+    conn.execute(
+        """INSERT INTO events
+           (project, role, event_type, issue_number, created_at)
+           VALUES (?, ?, ?, ?, datetime('now', '-1 hour'))""",
+        ("proj-mixed-hour", "dev", "judge", 213),
+    )
+    conn.execute(
+        """INSERT INTO events
+           (project, role, event_type, issue_number, created_at)
+           VALUES (?, ?, ?, ?, datetime('now', '-1 hour'))""",
+        ("proj-mixed-hour", "dev", "dev_done", 214),
+    )
+    conn.commit()
+    conn.close()
+
+    resp = isolated_client.get("/api/events_graph?window=24")
+    assert resp.status_code == 200
+    buckets = resp.json()["buckets"]
+
+    judge_buckets = [b for b in buckets if b["role"] == "judge"]
+    dev_buckets   = [b for b in buckets if b["role"] == "dev"]
+    judge_total = sum(b["count"] for b in judge_buckets)
+    dev_total   = sum(b["count"] for b in dev_buckets)
+    assert judge_total >= 1, f"expected ≥1 judge bucket count, got {judge_total}"
+    assert dev_total   >= 1, f"expected ≥1 dev bucket count, got {dev_total}"
