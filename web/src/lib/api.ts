@@ -23,6 +23,7 @@ import type {
   IssueCostRow,
   FailureContext,
   CycleTimesResponse,
+  CycleTimeAnalyticsResponse,
   SloConfig,
 } from './types';
 import * as fx from './fixtures';
@@ -193,6 +194,10 @@ export async function fetchFailureContext(
 
 export async function fetchCycleTimes(project: string): Promise<CycleTimesResponse> {
   return get<CycleTimesResponse>(`/api/projects/${encodeURIComponent(project)}/cycle_times`);
+}
+
+export async function fetchAnalyticsCycleTime(days = 30): Promise<CycleTimeAnalyticsResponse> {
+  return get<CycleTimeAnalyticsResponse>(`/api/analytics/cycle_time?days=${days}`);
 }
 
 export async function fetchSlo(project: string): Promise<SloConfig> {
