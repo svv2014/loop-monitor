@@ -31,6 +31,53 @@ cp config/projects.yaml.example config/projects.yaml   # then edit
 
 Open http://127.0.0.1:18792.
 
+## Running as a macOS service (LaunchAgent)
+
+The recommended setup runs the dashboard from a dedicated checkout that the pipeline never touches, so branch switches by automation can't cause the service to serve stale code.
+
+### One-time bootstrap
+
+```bash
+# 1. Clone into the dedicated service directory
+git clone https://github.com/svv2014/loop-monitor.git \
+  ~/.openclaw/workspace/services/loop-monitor
+
+# 2. Install Python deps and build the frontend
+cd ~/.openclaw/workspace/services/loop-monitor
+pip install -r requirements.txt
+cd web && npm ci && npm run build && cd ..
+
+# 3. Configure the dashboard (copy and edit)
+cp config/projects.yaml.example config/projects.yaml
+
+# 4. Install both LaunchAgents
+cp scripts/com.user.loop-monitor.plist ~/Library/LaunchAgents/
+cp scripts/com.user.loop-watch.plist   ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.user.loop-monitor.plist
+launchctl load ~/Library/LaunchAgents/com.user.loop-watch.plist
+launchctl start com.user.loop-monitor
+```
+
+> **Note:** The plist files hardcode `/Users/vadim/` — edit them to match your home directory before loading.
+
+### Redeploying to latest main
+
+```bash
+# From anywhere — updates the service checkout and restarts the server
+~/.openclaw/workspace/services/loop-monitor/scripts/redeploy.sh
+```
+
+The dashboard shows a warning banner when the running SHA is behind the latest `main`. Run `scripts/redeploy.sh` to clear it.
+
+### How it works
+
+| Component | Plist label | What it does |
+|-----------|-------------|--------------|
+| HTTP server | `com.user.loop-monitor` | Serves the dashboard at :18792, `KeepAlive=true` |
+| Loop watcher | `com.user.loop-watch` | Polls GitHub every 2h, POSTs events to the server |
+
+Both run from `~/.openclaw/workspace/services/loop-monitor` — a stable clone that `redeploy.sh` keeps on `origin/main`. The pipeline working tree (`projects/loop-monitor`) is never touched.
+
 ## Bring your own pipeline
 
 loop-monitor is wire-compatible with any system that can POST a small JSON payload per stage transition. Three configuration files cover the common reuse cases:

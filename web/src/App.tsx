@@ -104,10 +104,59 @@ export default function App() {
   const online = !activeQuery.isError;
   const version = healthQuery.data?.monitor_version ?? '…';
 
+  const runningSha = healthQuery.data?.git_sha;
+  const latestSha = healthQuery.data?.latest_main_sha;
+  const commitsBehind = healthQuery.data?.commits_behind ?? null;
+  const shaMismatch =
+    runningSha != null &&
+    latestSha != null &&
+    latestSha !== 'unknown' &&
+    runningSha !== latestSha;
+
+  const [bannerDismissedFor, setBannerDismissedFor] = useState<string | null>(null);
+  const bannerVisible = shaMismatch && bannerDismissedFor !== latestSha;
+
   return (
     <div className="app">
       <Logo />
       <TopBar events={events} online={online} version={version} />
+      {bannerVisible && (
+        <div
+          style={{
+            gridColumn: '1 / -1',
+            background: 'var(--amber, #b45309)',
+            color: '#fff',
+            padding: '6px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            fontSize: 12,
+            fontFamily: 'var(--font-mono, monospace)',
+          }}
+        >
+          <span>
+            Service is behind main —{' '}
+            running <strong>{runningSha}</strong>, latest <strong>{latestSha}</strong>
+            {commitsBehind != null && commitsBehind > 0 ? ` (${commitsBehind} commit${commitsBehind === 1 ? '' : 's'} behind)` : ''}
+            . Run <code style={{ background: 'rgba(0,0,0,0.2)', padding: '1px 4px', borderRadius: 3 }}>scripts/redeploy.sh</code> to update.
+          </span>
+          <button
+            onClick={() => setBannerDismissedFor(latestSha ?? null)}
+            style={{
+              marginLeft: 'auto',
+              background: 'none',
+              border: 'none',
+              color: '#fff',
+              cursor: 'pointer',
+              fontSize: 14,
+              padding: '0 4px',
+            }}
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      )}
       <NavRail screen={isProjectDetail ? 'projects' : navScreen} setScreen={handleNavChange} />
       <main className="main">
         {showCost ? (

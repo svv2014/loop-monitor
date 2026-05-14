@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  loop-watch — temporary observability for the Loop pipeline.
+  loop-watch — periodic watcher for the Loop pipeline.
+  Runs from the dedicated service checkout (NOT the pipeline working tree).
+
   Install:  cp scripts/com.user.loop-watch.plist ~/Library/LaunchAgents/
             launchctl load ~/Library/LaunchAgents/com.user.loop-watch.plist
   Disable:  launchctl unload ~/Library/LaunchAgents/com.user.loop-watch.plist
@@ -13,8 +15,11 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/vadim/.openclaw/workspace/projects/loop-monitor/scripts/loop-watch.sh</string>
+        <string>/Users/vadim/.openclaw/workspace/services/loop-monitor/scripts/loop-watch.sh</string>
     </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/vadim/.openclaw/workspace/services/loop-monitor</string>
 
     <key>StartInterval</key>
     <integer>7200</integer>
