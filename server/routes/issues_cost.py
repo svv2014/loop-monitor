@@ -3,7 +3,7 @@ import re
 import sqlite3
 import subprocess
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends
 
@@ -197,3 +197,160 @@ def get_issues_cost(
 
     result.sort(key=lambda r: (-r["rework_factor"], -r["actual_runs"]))
     return result
+
+
+def _median(values: list[float]) -> Optional[float]:
+    """Compute median of a list of floats. Returns None for empty list."""
+    if not values:
+        return None
+    s = sorted(values)
+    n = len(s)
+    mid = n // 2
+    if n % 2 == 0:
+        return round((s[mid - 1] + s[mid]) / 2, 4)
+    return round(s[mid], 4)
+
+
+def _linear_trend_slope(values: list[float]) -> float:
+    """Return slope from simple linear regression over evenly-spaced points."""
+    n = len(values)
+    if n < 2:
+        return 0.0
+    xs = list(range(n))
+    x_mean = sum(xs) / n
+    y_mean = sum(values) / n
+    num = sum((xs[i] - x_mean) * (values[i] - y_mean) for i in range(n))
+    den = sum((xs[i] - x_mean) ** 2 for i in range(n))
+    return num / den if den != 0 else 0.0
+
+
+@router.get("/api/cost/trend")
+def get_cost_trend(
+    days: int = 30,
+    project: Optional[str] = None,
+    priority: Optional[str] = None,
+    conn: sqlite3.Connection = Depends(db_dep),
+) -> dict[str, Any]:
+    since_dt = datetime.now(timezone.utc) - timedelta(days=days)
+    since_iso = since_dt.isoformat()
+
+    # Fetch all events in the window to compute per-issue rework factors per day
+    rows = conn.execute(
+        """
+        SELECT
+            date(created_at)   AS day,
+            project,
+            issue_number,
+            SUM(CASE WHEN event_type LIKE '%_start' THEN 1 ELSE 0 END) AS actual_runs
+        FROM events
+        WHERE issue_number IS NOT NULL
+          AND created_at >= ?
+          AND (? IS NULL OR project = ?)
+        GROUP BY day, project, issue_number
+        HAVING actual_runs > 0
+        """,
+        (since_iso, project, project),
+    ).fetchall()
+
+    # Build a map of day -> list of rework_factors
+    # rework_factor per (day, issue) = actual_runs_that_day / 5  (simplified happy path = 5, no child info here)
+    # We use the same formula as _build_row but without child_count (would require GH API per day per issue)
+    day_factors: dict[str, list[float]] = {}
+    for row in rows:
+        day: str = row["day"]
+        actual: int = row["actual_runs"] or 0
+        if actual == 0:
+            continue
+        # simple rework factor without child lookup (consistent for trend)
+        rf = round(actual / 5, 4)
+        day_factors.setdefault(day, []).append(rf)
+
+    # Apply priority filter if given — we need to know which (project, issue_number) have that priority
+    # We fetch all issues in window and then filter by priority via GH meta
+    if priority:
+        # collect all unique (project, issue_number) in the window
+        meta_rows = conn.execute(
+            """
+            SELECT DISTINCT project, issue_number
+            FROM events
+            WHERE issue_number IS NOT NULL
+              AND created_at >= ?
+              AND (? IS NULL OR project = ?)
+            """,
+            (since_iso, project, project),
+        ).fetchall()
+        allowed: set[tuple[str, int]] = set()
+        for mr in meta_rows:
+            meta = _fetch_gh_meta(mr["project"], mr["issue_number"])
+            if meta.get("priority") == priority:
+                allowed.add((mr["project"], mr["issue_number"]))
+
+        # rebuild day_factors filtered to allowed issues
+        day_factors = {}
+        for row in rows:
+            key = (row["project"], row["issue_number"])
+            if key not in allowed:
+                continue
+            day: str = row["day"]
+            actual = row["actual_runs"] or 0
+            if actual == 0:
+                continue
+            rf = round(actual / 5, 4)
+            day_factors.setdefault(day, []).append(rf)
+
+    # Build sorted list of days in the window
+    today_dt = datetime.now(timezone.utc).date()
+    all_days = [(today_dt - timedelta(days=i)).isoformat() for i in range(days - 1, -1, -1)]
+
+    buckets: list[dict[str, Any]] = []
+    for d in all_days:
+        factors = day_factors.get(d, [])
+        med = _median(factors)
+        buckets.append({
+            "date": d,
+            "median_rework_factor": med,
+            "issue_count": len(factors),
+        })
+
+    # today's stats
+    today_factors = day_factors.get(today_dt.isoformat(), [])
+    today_median = _median(today_factors)
+    today_count = len(today_factors)
+
+    # comparison helpers
+    def _median_for_day(offset_days: int) -> Optional[float]:
+        d = (today_dt - timedelta(days=offset_days)).isoformat()
+        return _median(day_factors.get(d, []))
+
+    def _delta(ref: Optional[float]) -> Optional[float]:
+        if today_median is None or ref is None:
+            return None
+        return round(today_median - ref, 4)
+
+    vs_7d = _delta(_median_for_day(7))
+    vs_30d = _delta(_median_for_day(30))
+
+    # trend from linear regression on last 14 buckets that have data
+    recent_medians = [b["median_rework_factor"] for b in buckets[-14:] if b["median_rework_factor"] is not None]
+    if len(recent_medians) >= 3:
+        slope = _linear_trend_slope(recent_medians)
+        if slope < -0.01:
+            trend = "improving"
+        elif slope > 0.01:
+            trend = "degrading"
+        else:
+            trend = "stable"
+    else:
+        trend = "stable"
+
+    return {
+        "window_days": days,
+        "today": {
+            "median_rework_factor": today_median,
+            "issue_count": today_count,
+        },
+        "vs_7d": vs_7d,
+        "vs_30d": vs_30d,
+        "trend": trend,
+        "buckets": buckets,
+    }
