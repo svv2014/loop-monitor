@@ -10,6 +10,7 @@ import Queue from './screens/Queue';
 import WorkerDetail from './screens/WorkerDetail';
 import Cost from './screens/Cost';
 import Analytics from './screens/Analytics';
+import Timeline from './screens/Timeline';
 import { useHashRoute } from './router';
 import { fetchActive, fetchHealth } from './lib/api';
 
@@ -23,7 +24,7 @@ const SCREEN_KEYS: Record<string, string> = {
 };
 
 export default function App() {
-  const { screen: hashScreen, projectId: hashProjectId, projectFilter, navigateTo, setProjectFilter } = useHashRoute();
+  const { screen: hashScreen, projectId: hashProjectId, projectFilter, issueNum, navigateTo, setProjectFilter, navigateToTimeline } = useHashRoute();
 
   // 'cost' is local-only — not stored in the hash — so we track it separately.
   const [showCost, setShowCost] = useState(false);
@@ -75,6 +76,7 @@ export default function App() {
   }
 
   const isProjectDetail = hashNavScreen === 'projects' && projectId != null;
+  const isTimeline = hashScreen === 'timeline' && projectId != null && issueNum != null;
 
   const activeQuery = useQuery({
     queryKey: ['active'],
@@ -120,12 +122,19 @@ export default function App() {
       <main className="main">
         {showCost ? (
           <Cost globalProjectFilter={projectFilter} />
+        ) : isTimeline && projectId != null && issueNum != null ? (
+          <Timeline
+            slug={projectId}
+            num={issueNum}
+            onBack={() => navigateTo('project', projectId, { pushState: true })}
+          />
         ) : isProjectDetail && projectId != null ? (
           <ProjectDetail
             projectId={projectId}
             allProjectIds={allProjectIds.length > 0 ? allProjectIds : [projectId]}
             onBack={handleBack}
             onProjectChange={handleProjectChange}
+            onViewTimeline={navigateToTimeline}
           />
         ) : hashNavScreen === 'overview' ? (
           <Overview globalProjectFilter={projectFilter} />

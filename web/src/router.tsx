@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
-export type Screen = 'overview' | 'queue' | 'projects' | 'workers' | 'project' | 'logs' | 'analytics';
+export type Screen = 'overview' | 'queue' | 'projects' | 'workers' | 'project' | 'logs' | 'analytics' | 'timeline';
 
 export interface HashRoute {
   screen: Screen;
@@ -140,13 +140,28 @@ export function useHashRoute() {
     [route.screen, route.projectId, route.drawer, unknown],
   );
 
+  const navigateToTimeline = useCallback(
+    (slug: string, num: number) => {
+      const newUnknown = { ...unknown, issue_num: String(num) };
+      const hash = buildHash('timeline', slug, null, newUnknown);
+      history.pushState(null, '', window.location.pathname + window.location.search + hash);
+      setParsed({ known: { screen: 'timeline', projectId: slug, drawer: null }, unknown: newUnknown });
+    },
+    [unknown],
+  );
+
+  const rawIssueNum = unknown['issue_num'];
+  const issueNum = rawIssueNum != null ? parseInt(rawIssueNum, 10) : null;
+
   return {
     screen: route.screen,
     projectId: route.projectId,
     drawer: route.drawer,
     projectFilter: unknown['project_filter'] ?? null,
+    issueNum: Number.isNaN(issueNum) ? null : issueNum,
     navigateTo,
     setDrawer,
     setProjectFilter,
+    navigateToTimeline,
   };
 }
