@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { buildLeaderboard, buildProjectStatus, build24hBuckets } from './transforms';
-import { relTime, durationFmt, absoluteUtc } from './utils';
+import { relTime, durationFmt, absoluteUtc, matchesProjectFilter } from './utils';
 import type { LoopEvent, Worker } from './types';
 
 type ExtLoopEvent = LoopEvent & { points?: number; agent?: string; ts?: number };
@@ -236,5 +236,29 @@ describe('build24hBuckets', () => {
     ];
     const buckets = build24hBuckets(events);
     expect(buckets[23].total).toBe(3);
+  });
+});
+
+// ── matchesProjectFilter ──────────────────────────────────────────────────────
+
+describe('matchesProjectFilter', () => {
+  it('returns true when filter is null (no filter active)', () => {
+    expect(matchesProjectFilter('loop-monitor', null)).toBe(true);
+  });
+
+  it('returns true when filter is undefined', () => {
+    expect(matchesProjectFilter('loop-monitor', undefined)).toBe(true);
+  });
+
+  it('returns true when project matches the filter exactly', () => {
+    expect(matchesProjectFilter('loop-monitor', 'loop-monitor')).toBe(true);
+  });
+
+  it('returns false when project does not match the filter', () => {
+    expect(matchesProjectFilter('other-project', 'loop-monitor')).toBe(false);
+  });
+
+  it('is case-sensitive', () => {
+    expect(matchesProjectFilter('Loop-Monitor', 'loop-monitor')).toBe(false);
   });
 });
