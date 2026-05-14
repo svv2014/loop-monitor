@@ -1,19 +1,18 @@
 from scripts.dashboard import (
+    _box_bot,
+    _box_row,
+    _box_sep,
+    _box_top,
+    _center_padded,
     _since,
     _strip_ansi,
-    _box_top,
-    _box_bot,
-    _box_sep,
-    _box_row,
-    _center_padded,
     render_banner,
     render_cards,
     render_feed,
     render_leaderboard,
-    render_verdict,
     render_simple,
+    render_verdict,
 )
-
 
 # ── _since (unchanged helper) ─────────────────────────────────────────────────
 
@@ -186,7 +185,7 @@ def test_render_feed_respects_limit():
     events = [{"role": "tester", "event_type": "test_done", "age_seconds": i}
               for i in range(10)]
     lines = render_feed(events, col_width=60, limit=3)
-    event_lines = [l for l in lines if "•" in l]
+    event_lines = [line for line in lines if "•" in line]
     assert len(event_lines) == 3
 
 
@@ -214,7 +213,7 @@ def test_render_leaderboard_shows_ranks():
 def test_render_leaderboard_limit():
     board = [{"role": f"r{i}", "total_points": i} for i in range(10)]
     lines = render_leaderboard(board, col_width=30, limit=5)
-    rank_lines = [l for l in lines if l.strip().startswith(tuple("123456789"))]
+    rank_lines = [line for line in lines if line.strip().startswith(tuple("123456789"))]
     assert len(rank_lines) == 5
 
 
