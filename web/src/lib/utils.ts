@@ -22,6 +22,10 @@ export function durationFmt(ms: number): string {
   return `${h}h ${m % 60}m`;
 }
 
+export function matchesProjectFilter(project: string, filter: string | null | undefined): boolean {
+  return !filter || project === filter;
+}
+
 export function useTick(ms = 1000): void {
   const [, setN] = useState(0);
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchActionQueue } from '../lib/api';
 import type { QueueItem } from '../lib/types';
@@ -157,7 +157,11 @@ function QueueTable({ items, onRowClick, sortCol, sortDir, onSort }: QueueTableP
   );
 }
 
-export default function Queue() {
+interface QueueProps {
+  globalProjectFilter?: string | null;
+}
+
+export default function Queue({ globalProjectFilter }: QueueProps) {
   const { data: items = [], isLoading } = useQuery({
     queryKey: ['actionQueue'],
     queryFn: fetchActionQueue,
@@ -166,11 +170,15 @@ export default function Queue() {
 
   const { setDrawer } = useHashRoute();
   const [selected, setSelected] = useState<QueueItem | null>(null);
-  const [filterProject, setFilterProject] = useState('');
+  const [filterProject, setFilterProject] = useState(globalProjectFilter ?? '');
   const [filterReason, setFilterReason] = useState('');
   const [filterLoop, setFilterLoop] = useState('');
   const [sortCol, setSortCol] = useState<SortCol>('age_seconds');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
+
+  useEffect(() => {
+    setFilterProject(globalProjectFilter ?? '');
+  }, [globalProjectFilter]);
 
   const projects = useMemo(
     () => [...new Set(items.map(i => i.project))].sort(),

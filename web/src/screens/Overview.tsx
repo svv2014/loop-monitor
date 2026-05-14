@@ -11,7 +11,7 @@ import Leaderboard from '../panels/Leaderboard';
 import ActivityFeed from '../panels/ActivityFeed';
 import EventGlyph from '../components/EventGlyph';
 import RoleTag from '../components/RoleTag';
-import { relTime, durationFmt } from '../lib/utils';
+import { relTime, durationFmt, matchesProjectFilter } from '../lib/utils';
 import Charts from '../panels/Charts';
 import ClaudeUsage from '../panels/ClaudeUsage';
 import { useRoleIds } from '../lib/useRoles';
@@ -20,7 +20,11 @@ const COMPLETED_TYPES = new Set([
   'merge_done', 'judge_done', 'review_done', 'dev_done', 'po_done',
 ]);
 
-export default function Overview() {
+interface OverviewProps {
+  globalProjectFilter?: string | null;
+}
+
+export default function Overview({ globalProjectFilter }: OverviewProps) {
   const roleIds = useRoleIds();
 
   const { data: workers = [] } = useQuery({
@@ -51,8 +55,23 @@ export default function Overview() {
     staleTime: 0,
   });
 
+  const filteredWorkers = useMemo(
+    () => workers.filter(w => matchesProjectFilter(w.project, globalProjectFilter)),
+    [workers, globalProjectFilter],
+  );
+
+  const filteredFeed = useMemo(
+    () => feed.filter(e => matchesProjectFilter(e.project, globalProjectFilter)),
+    [feed, globalProjectFilter],
+  );
+
+  const filteredHistory = useMemo(
+    () => history.filter(e => matchesProjectFilter(e.project, globalProjectFilter)),
+    [history, globalProjectFilter],
+  );
+
   const buckets = useMemo(() => {
-    if (eventsGraph) {
+    if (eventsGraph && !globalProjectFilter) {
       // Bucket by relative hour from now (slot 23 = current hour, slot 0 = 23h ago).
       // `b.hour` from /api/events_graph is a UTC ISO string with no Z suffix; append Z so JS parses as UTC.
       const buckets = Array.from({ length: 24 }, (_, i) => ({
@@ -71,25 +90,25 @@ export default function Overview() {
       }
       return buckets;
     }
-    return build24hBuckets(history as (LoopEvent & { ts?: number })[], roleIds);
-  }, [eventsGraph, history, roleIds]);
+    return build24hBuckets(filteredHistory as (LoopEvent & { ts?: number })[], roleIds);
+  }, [eventsGraph, filteredHistory, roleIds, globalProjectFilter]);
 
   const projects = useMemo(
     () => buildProjectStatus(
-      history as Parameters<typeof buildProjectStatus>[0],
-      workers,
+      filteredHistory as Parameters<typeof buildProjectStatus>[0],
+      filteredWorkers,
     ),
-    [history, workers],
+    [filteredHistory, filteredWorkers],
   );
 
   const completed = useMemo(
-    () => history.filter(e => COMPLETED_TYPES.has(e.event_type)).slice(0, 30),
-    [history],
+    () => filteredHistory.filter(e => COMPLETED_TYPES.has(e.event_type)).slice(0, 30),
+    [filteredHistory],
   );
 
   return (
     <>
-      <NowStrip workers={workers} events={feed} />
+      <NowStrip workers={filteredWorkers} events={filteredFeed} />
       <div style={{ padding: 'var(--pad-4)', display: 'grid', gap: 'var(--pad-3)' }}>
 
         <Activity24h buckets={buckets} />
@@ -113,11 +132,11 @@ export default function Overview() {
               ))}
             </div>
           </div>
-          <Leaderboard events={history} />
+          <Leaderboard events={filteredHistory} />
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--pad-3)' }}>
-          <ActivityFeed events={feed} />
+          <ActivityFeed events={filteredFeed} />
           <div className="panel">
             <div className="panel-h"><span>Completed jobs · last 30</span></div>
             <div style={{ overflow: 'auto', maxHeight: 480 }}>
@@ -159,7 +178,7 @@ export default function Overview() {
           </div>
         </div>
 
-        <ClaudeUsage />
+        <ClaudeUsage activeFilter={globalProjectFilter} />
         <Charts />
 
       </div>
