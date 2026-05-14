@@ -4,26 +4,9 @@
 
 loop-monitor renders any pipeline that emits the simple [bounty event API](#api). It ships with first-class integration for [Loop](https://github.com/svv2014/loop) (the autonomous dev pipeline it was originally built for), but works equally well as the visibility layer for your own CI/CD, autonomous-agent, or build/deploy system. The role vocabulary, project list, and event types are all operator-configurable via yaml — no source patches.
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      LOOP MONITOR                            │
-│                http://localhost:18792                        │
-├─────────────────────────────────────────────────────────────┤
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────────┐      │
-│  │   Lint   │  │  Build   │  │   Test   │  │ Deploy │      │
-│  │ ◉  idle  │  │ ◉  busy  │  │ ◉  idle  │  │ ◉ wait │      │
-│  │ 52 pts   │  │ 185 pts  │  │ 120 pts  │  │ 74 pts │      │
-│  └──────────┘  └──────────┘  └──────────┘  └────────┘      │
-│                                                              │
-│  LIVE FEED                           LEADERBOARD             │
-│  • ◉ Builder working #35            1. sonnet   185 pts    │
-│  • ✓ Test passed #301               2. opus     120 pts    │
-│  • ★ Merged #42 → +13 pts           3. gemini    12 pts    │
-│                                                              │
-│  JUDGE VERDICT (PR #42):                                     │
-│  "Clean merge, solid spec, no rework. Full score."           │
-└─────────────────────────────────────────────────────────────┘
-```
+![loop-monitor Overview screen](docs/screenshots/overview.png)
+
+*Overview screen: live pipeline activity, 24h role mix, project status, leaderboard, activity feed, and per-project event/point charts. Captured from a real instance running v0.3.0.*
 
 ## What it shows
 
