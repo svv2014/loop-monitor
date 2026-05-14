@@ -106,6 +106,8 @@ export default function App() {
   }));
   const online = !activeQuery.isError;
   const version = healthQuery.data?.monitor_version ?? '…';
+  const gitSha = healthQuery.data?.git_sha;
+  const latestMainSha = healthQuery.data?.latest_main_sha;
 
   return (
     <div className="app">
@@ -114,6 +116,8 @@ export default function App() {
         events={events}
         online={online}
         version={version}
+        gitSha={gitSha}
+        latestMainSha={latestMainSha}
         allProjectIds={allProjectIds}
         projectFilter={projectFilter}
         onProjectFilterChange={setProjectFilter}

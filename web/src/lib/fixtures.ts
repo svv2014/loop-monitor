@@ -287,6 +287,7 @@ export function getFixtureHealth(): Health {
     status: 'ok',
     monitor_version: '0.0.0-fixture',
     git_sha: 'c0ffee0',
+    latest_main_sha: 'deadbee',
     supported_bounty_api: '1.x',
     core_version_counts: { '1.0': 300, '1.1': 45 },
     loop_ids: ['loop-001', 'loop-002'],

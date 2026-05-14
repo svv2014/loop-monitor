@@ -230,6 +230,43 @@ LOOPMON_EXPOSE_LOGS=1
 
 loop-monitor is **operator-driven** — currently developed by an autonomous pipeline tied to a single operator account. External PRs are not accepted at this time. See [CONTRIBUTING.md](CONTRIBUTING.md) for details and alternatives (file an issue, fork freely under MIT, file security reports via GitHub Security Advisories).
 
+## Service checkout (recommended install)
+
+The service should run from a **dedicated clone** that the pipeline never touches. This prevents the dashboard from accidentally serving stale code left on a feature branch.
+
+### One-time bootstrap
+
+```bash
+git clone https://github.com/svv2014/loop-monitor.git \
+    ~/.openclaw/workspace/services/loop-monitor
+cd ~/.openclaw/workspace/services/loop-monitor
+pip install -r requirements.txt
+cd web && npm ci && npm run build && cd ..
+```
+
+### Install the LaunchAgent
+
+```bash
+cp scripts/com.user.loop-monitor.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.user.loop-monitor.plist
+```
+
+The plist runs `run.sh` from the service checkout with `KeepAlive = true`, so it restarts automatically on crash.
+
+### Redeploy (update to latest main)
+
+When the dashboard shows an **"Update available"** banner run:
+
+```bash
+~/.openclaw/workspace/services/loop-monitor/scripts/redeploy.sh
+```
+
+This fetches the latest `main`, reinstalls Python deps, rebuilds the web bundle, and restarts the LaunchAgent in one step. The script is idempotent and exits non-zero on any failed step.
+
+Override the service path with `LOOP_MONITOR_SERVICE_DIR` if you cloned elsewhere.
+
+> The `com.user.loop-watch.plist` (the pipeline monitoring script) continues to run from the operator working tree and is unaffected by this setup.
+
 ## Development
 
 ```bash

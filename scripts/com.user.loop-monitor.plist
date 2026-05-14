@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  loop-monitor server — runs the FastAPI/uvicorn dashboard from a dedicated
+  service checkout that the pipeline never writes to.
+
+  Bootstrap (one-time):
+    git clone https://github.com/svv2014/loop-monitor.git \
+        ~/.openclaw/workspace/services/loop-monitor
+    cd ~/.openclaw/workspace/services/loop-monitor
+    pip install -r requirements.txt
+    cd web && npm ci && npm run build && cd ..
+
+  Install:
+    cp scripts/com.user.loop-monitor.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.user.loop-monitor.plist
+
+  Update to latest main:
+    scripts/redeploy.sh   (fetches, rebuilds, restarts)
+
+  Disable:
+    launchctl unload ~/Library/LaunchAgents/com.user.loop-monitor.plist
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.user.loop-monitor</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/vadim/.openclaw/workspace/services/loop-monitor/run.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/vadim/.openclaw/workspace/services/loop-monitor</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/loop-monitor.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/loop-monitor.err.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+</dict>
+</plist>
