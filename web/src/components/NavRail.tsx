@@ -40,6 +40,11 @@ const NAV_ICONS: Record<string, ReactNode> = {
       <rect x="17" y="4" width="4" height="17"/>
     </svg>
   ),
+  analytics: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <circle cx="12" cy="12" r="9"/><path d="M12 3v9l5 5"/>
+    </svg>
+  ),
   settings: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
       <circle cx="12" cy="12" r="3"/>
@@ -55,7 +60,8 @@ export default function NavRail({ screen, setScreen }: NavRailProps) {
     { id: 'projects', label: 'Projects' },
     { id: 'workers',  label: 'Workers' },
     { id: 'logs',     label: 'Logs' },
-    { id: 'cost',     label: 'Cost' },
+    { id: 'cost',      label: 'Cost' },
+    { id: 'analytics', label: 'Analytics' },
   ];
   return (
     <div className="nav">
