@@ -121,7 +121,7 @@ export default function App() {
       <main className="main">
         {showCost ? (
           <Cost />
-        ) : showAnalytics ? (
+        ) : (showAnalytics || hashNavScreen === 'analytics') ? (
           <Analytics />
         ) : isProjectDetail && projectId != null ? (
           <ProjectDetail
