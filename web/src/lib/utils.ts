@@ -1,6 +1,15 @@
 import { useState, useEffect } from 'react';
 
+/** Parses a UTC ISO string that may lack a Z/offset suffix (e.g. from SQLite). */
+export function parseServerTs(s: string): number {
+  if (!s) return NaN;
+  // If the string already has a timezone indicator, parse as-is; otherwise treat as UTC.
+  const normalized = /[Zz]$|[+-]\d{2}:\d{2}$/.test(s) ? s : s + 'Z';
+  return new Date(normalized).getTime();
+}
+
 export function relTime(ts: number): string {
+  if (!isFinite(ts)) return '—';
   const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
   if (s < 60) return s + 's ago';
   if (s < 3600) return Math.floor(s / 60) + 'm ago';

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { buildLeaderboard, buildProjectStatus, build24hBuckets } from './transforms';
-import { relTime, durationFmt, absoluteUtc, matchesProjectFilter } from './utils';
+import { relTime, durationFmt, absoluteUtc, matchesProjectFilter, parseServerTs } from './utils';
 import type { LoopEvent, Worker } from './types';
 
 type ExtLoopEvent = LoopEvent & { points?: number; agent?: string; ts?: number };
@@ -58,6 +58,41 @@ describe('relTime', () => {
   it('returns days with ago suffix', () => {
     vi.spyOn(Date, 'now').mockReturnValue(2 * 86400 * 1000);
     expect(relTime(0)).toBe('2d ago');
+  });
+
+  it('returns fallback for NaN timestamp', () => {
+    expect(relTime(NaN)).toBe('—');
+  });
+
+  it('returns fallback for Infinity timestamp', () => {
+    expect(relTime(Infinity)).toBe('—');
+  });
+});
+
+// ── parseServerTs ─────────────────────────────────────────────────────────────
+
+describe('parseServerTs', () => {
+  it('parses a UTC-naive ISO string as UTC', () => {
+    const ts = parseServerTs('2024-05-01T12:00:00');
+    expect(ts).toBe(new Date('2024-05-01T12:00:00Z').getTime());
+  });
+
+  it('parses a Z-suffixed ISO string correctly', () => {
+    const ts = parseServerTs('2024-05-01T12:00:00Z');
+    expect(ts).toBe(new Date('2024-05-01T12:00:00Z').getTime());
+  });
+
+  it('parses a string with explicit +00:00 offset correctly', () => {
+    const ts = parseServerTs('2024-05-01T12:00:00+00:00');
+    expect(ts).toBe(new Date('2024-05-01T12:00:00Z').getTime());
+  });
+
+  it('returns NaN for a genuinely unparseable string', () => {
+    expect(parseServerTs('not-a-date')).toBeNaN();
+  });
+
+  it('returns NaN for an empty string', () => {
+    expect(parseServerTs('')).toBeNaN();
   });
 });
 
