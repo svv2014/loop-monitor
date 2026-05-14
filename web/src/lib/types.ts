@@ -261,6 +261,23 @@ export interface CycleTimeAnalyticsResponse {
   lead_time: CycleTimePct | null;
 }
 
+export interface TimelineEvent {
+  id: number;
+  project: string;
+  role: string;
+  model: string | null;
+  event_type: string;
+  issue_number: number | null;
+  pr_number: number | null;
+  detail: string | null;
+  payload: Record<string, unknown> | null;
+  ts: string;
+}
+
+export interface TimelineResponse {
+  events: TimelineEvent[];
+}
+
 export interface IssueCostRow {
   project: string;
   issue_number: number;

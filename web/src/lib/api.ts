@@ -25,6 +25,7 @@ import type {
   CycleTimesResponse,
   CycleTimeAnalyticsResponse,
   SloConfig,
+  TimelineResponse,
 } from './types';
 import * as fx from './fixtures';
 
@@ -198,6 +199,12 @@ export async function fetchCycleTimes(project: string): Promise<CycleTimesRespon
 
 export async function fetchAnalyticsCycleTime(days = 30): Promise<CycleTimeAnalyticsResponse> {
   return get<CycleTimeAnalyticsResponse>(`/api/analytics/cycle_time?days=${days}`);
+}
+
+export async function fetchTimeline(slug: string, num: number, includeSkips = false): Promise<TimelineResponse> {
+  const p = new URLSearchParams({ slug, num: String(num) });
+  if (includeSkips) p.set('include_skips', 'true');
+  return get<TimelineResponse>(`/api/timeline?${p.toString()}`);
 }
 
 export async function fetchSlo(project: string): Promise<SloConfig> {

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import PrMonitorTable from '../components/PrMonitorTable';
 import type { Worker, FeedItem, PipelineRun, PRMonitorEntry, CycleTimesResponse, SloConfig } from '../lib/types';
 import { fetchCycleTimes, fetchSlo } from '../lib/api';
+import { useHashRoute } from '../router';
 
 interface IssueRollup {
   num: number;
@@ -163,6 +164,7 @@ function CycleTimePanel({ cycleTimes, slo, runs }: CycleTimePanelProps) {
 }
 
 export default function ProjectDetail({ projectId, allProjectIds, onBack, onProjectChange }: ProjectDetailProps) {
+  const { navigateTo } = useHashRoute();
   const [runs, setRuns] = useState<PipelineRun[]>([]);
   const [prs, setPrs] = useState<PRMonitorEntry[]>([]);
   const [feed, setFeed] = useState<FeedItem[]>([]);
@@ -336,11 +338,12 @@ export default function ProjectDetail({ projectId, allProjectIds, onBack, onProj
                   <th style={{ textAlign: 'right' }}>Runs</th>
                   <th>Last</th>
                   <th style={{ textAlign: 'right' }}>Pts</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
                 {issues.length === 0 && (
-                  <tr><td colSpan={5} className="muted" style={{ textAlign: 'center', padding: 'var(--pad-3)' }}>No runs yet</td></tr>
+                  <tr><td colSpan={6} className="muted" style={{ textAlign: 'center', padding: 'var(--pad-3)' }}>No runs yet</td></tr>
                 )}
                 {issues.map(i => (
                   <tr key={i.num}>
@@ -358,6 +361,16 @@ export default function ProjectDetail({ projectId, allProjectIds, onBack, onProj
                       {i.lastAt ? relTime(i.lastAt) : '—'}
                     </td>
                     <td className="num" style={{ textAlign: 'right' }}>{i.pts}</td>
+                    <td>
+                      <button
+                        className="btn"
+                        style={{ fontSize: 10, padding: '1px 6px' }}
+                        onClick={() => navigateTo('timeline', projectId, { drawer: null, pushState: true, issueNum: i.num })}
+                        title={`Timeline for #${i.num}`}
+                      >
+                        timeline
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
