@@ -2,6 +2,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { fetchFeed } from '../lib/api';
 import type { FeedItem } from '../lib/types';
+import { matchesProjectFilter } from '../lib/utils';
 
 function relTime(isoStr: string, ageSeconds: number | null): string {
   const secs = ageSeconds ?? Math.floor((Date.now() - new Date(isoStr).getTime()) / 1000);
@@ -38,7 +39,11 @@ interface AgentRow {
   roles: Set<string>;
 }
 
-export default function WorkerDetail() {
+interface WorkerDetailProps {
+  globalProjectFilter?: string | null;
+}
+
+export default function WorkerDetail({ globalProjectFilter }: WorkerDetailProps) {
   const [items, setItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
@@ -55,9 +60,14 @@ export default function WorkerDetail() {
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
+  const filteredItems = useMemo(
+    () => items.filter(e => matchesProjectFilter(e.project, globalProjectFilter)),
+    [items, globalProjectFilter],
+  );
+
   const byAgent = useMemo((): AgentRow[] => {
     const m = new Map<string, AgentRow>();
-    for (const e of items) {
+    for (const e of filteredItems) {
       const k = `${e.role}/${e.model ?? ''}`;
       if (!m.has(k)) {
         m.set(k, {
@@ -84,8 +94,8 @@ export default function WorkerDetail() {
   const selectedKey = filter || byAgent[0]?.key;
   const selected = byAgent.find(a => a.key === selectedKey) ?? byAgent[0];
   const selectedItems = useMemo(
-    () => items.filter(e => `${e.role}/${e.model ?? ''}` === selected?.key).slice(0, 60),
-    [items, selected],
+    () => filteredItems.filter(e => `${e.role}/${e.model ?? ''}` === selected?.key).slice(0, 60),
+    [filteredItems, selected],
   );
 
   if (loading) {

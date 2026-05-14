@@ -8,6 +8,9 @@ interface TopBarProps {
   events: TopBarEvent[];
   online: boolean;
   version: string;
+  allProjectIds: string[];
+  projectFilter: string | null;
+  onProjectFilterChange: (v: string | null) => void;
 }
 
 function timeFmt(d: Date): string {
@@ -25,10 +28,11 @@ function useTick(ms = 1000) {
   }, [ms]);
 }
 
-export default function TopBar({ events, online, version }: TopBarProps) {
+export default function TopBar({ events, online, version, allProjectIds, projectFilter, onProjectFilterChange }: TopBarProps) {
   useTick(1000);
   const now = new Date();
   const eventsLastMin = events.filter(e => Date.now() - e.ts < 60_000).length;
+  const isFiltered = !!projectFilter;
   return (
     <div className="topbar">
       <div className="left">
@@ -41,6 +45,25 @@ export default function TopBar({ events, online, version }: TopBarProps) {
         <span>: 127.0.0.1:18792</span>
       </div>
       <div className="right">
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <label className="muted mono" style={{ fontSize: 11 }}>Project:</label>
+          <select
+            className="btn"
+            value={projectFilter ?? ''}
+            onChange={e => onProjectFilterChange(e.target.value || null)}
+            style={{
+              cursor: 'pointer',
+              border: isFiltered ? '1px solid var(--accent)' : undefined,
+              background: isFiltered ? 'color-mix(in srgb, var(--accent) 15%, var(--bg-1))' : undefined,
+              color: isFiltered ? 'var(--accent)' : undefined,
+            }}
+          >
+            <option value="">All</option>
+            {allProjectIds.map(id => (
+              <option key={id} value={id}>{id}</option>
+            ))}
+          </select>
+        </span>
         <span>{eventsLastMin}/min</span>
         <span>· {events.length.toLocaleString()} events</span>
         <span>· {timeFmt(now)}</span>

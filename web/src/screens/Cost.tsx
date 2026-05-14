@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchIssuesCost } from '../lib/api';
 import type { IssueCostRow } from '../lib/types';
@@ -46,11 +46,19 @@ function median(rows: IssueCostRow[]): number | null {
     : sorted[mid].rework_factor;
 }
 
-export default function Cost() {
+interface CostProps {
+  globalProjectFilter?: string | null;
+}
+
+export default function Cost({ globalProjectFilter }: CostProps) {
   const [offset, setOffset] = useState(0);
   const [allRows, setAllRows] = useState<IssueCostRow[]>([]);
-  const [filterProject, setFilterProject] = useState('');
+  const [filterProject, setFilterProject] = useState(globalProjectFilter ?? '');
   const [filterPriority, setFilterPriority] = useState('');
+
+  useEffect(() => {
+    setFilterProject(globalProjectFilter ?? '');
+  }, [globalProjectFilter]);
 
   const query = useQuery({
     queryKey: ['issues-cost', offset],

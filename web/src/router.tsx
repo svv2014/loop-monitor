@@ -122,11 +122,31 @@ export function useHashRoute() {
     [route.screen, route.projectId, unknown],
   );
 
+  const setProjectFilter = useCallback(
+    (filter: string | null) => {
+      const newUnknown = { ...unknown };
+      if (filter) {
+        newUnknown['project_filter'] = filter;
+      } else {
+        delete newUnknown['project_filter'];
+      }
+      const hash = buildHash(route.screen, route.projectId, route.drawer, newUnknown);
+      history.replaceState(null, '', window.location.pathname + window.location.search + hash);
+      setParsed(prev => ({
+        known: prev.known,
+        unknown: newUnknown,
+      }));
+    },
+    [route.screen, route.projectId, route.drawer, unknown],
+  );
+
   return {
     screen: route.screen,
     projectId: route.projectId,
     drawer: route.drawer,
+    projectFilter: unknown['project_filter'] ?? null,
     navigateTo,
     setDrawer,
+    setProjectFilter,
   };
 }

@@ -22,7 +22,7 @@ const SCREEN_KEYS: Record<string, string> = {
 };
 
 export default function App() {
-  const { screen: hashScreen, projectId: hashProjectId, navigateTo } = useHashRoute();
+  const { screen: hashScreen, projectId: hashProjectId, projectFilter, navigateTo, setProjectFilter } = useHashRoute();
 
   // 'cost' is local-only — not stored in the hash — so we track it separately.
   const [showCost, setShowCost] = useState(false);
@@ -107,11 +107,18 @@ export default function App() {
   return (
     <div className="app">
       <Logo />
-      <TopBar events={events} online={online} version={version} />
+      <TopBar
+        events={events}
+        online={online}
+        version={version}
+        allProjectIds={allProjectIds}
+        projectFilter={projectFilter}
+        onProjectFilterChange={setProjectFilter}
+      />
       <NavRail screen={isProjectDetail ? 'projects' : navScreen} setScreen={handleNavChange} />
       <main className="main">
         {showCost ? (
-          <Cost />
+          <Cost globalProjectFilter={projectFilter} />
         ) : isProjectDetail && projectId != null ? (
           <ProjectDetail
             projectId={projectId}
@@ -120,11 +127,11 @@ export default function App() {
             onProjectChange={handleProjectChange}
           />
         ) : hashNavScreen === 'overview' ? (
-          <Overview />
+          <Overview globalProjectFilter={projectFilter} />
         ) : hashNavScreen === 'queue' ? (
-          <Queue />
+          <Queue globalProjectFilter={projectFilter} />
         ) : hashNavScreen === 'workers' ? (
-          <WorkerDetail />
+          <WorkerDetail globalProjectFilter={projectFilter} />
         ) : hashNavScreen === 'logs' ? (
           <Logs />
         ) : (
