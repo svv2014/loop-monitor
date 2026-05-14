@@ -197,3 +197,97 @@ def get_issues_cost(
 
     result.sort(key=lambda r: (-r["rework_factor"], -r["actual_runs"]))
     return result
+
+
+# Rework event_types that count toward the timeseries chart
+_REWORK_TYPES = {"po_failed", "dev_rework", "qa_fail", "review_reject"}
+
+# Mapping from event_type to the stage bucket key in by_stage
+_REWORK_STAGE_MAP = {
+    "po_failed":     "po_failed",
+    "dev_rework":    "dev_rework",
+    "qa_fail":       "qa_fail",
+    "review_reject": "review_reject",
+}
+
+
+@router.get("/api/cost/timeseries")
+def get_cost_timeseries(
+    days: int = 30,
+    project: Optional[str] = None,
+    priority: Optional[str] = None,
+    conn: sqlite3.Connection = Depends(db_dep),
+) -> dict:
+    today_dt = datetime.now(timezone.utc).date()
+    since_dt = today_dt - timedelta(days=days - 1)
+    since_iso = since_dt.isoformat()
+
+    # Single aggregation query: group by date + event_type, carry issue_number
+    # for top_issues computation. priority filter is applied post-query via
+    # a subquery so we don't need a JOIN to an external service.
+    rows = conn.execute(
+        """
+        SELECT
+            date(e.created_at)  AS day,
+            e.event_type        AS event_type,
+            e.issue_number      AS issue_number,
+            COUNT(*)            AS cnt
+        FROM events e
+        WHERE e.event_type IN ('po_failed', 'dev_rework', 'qa_fail', 'review_reject')
+          AND date(e.created_at) >= ?
+          AND (? IS NULL OR e.project = ?)
+          AND e.issue_number IS NOT NULL
+        GROUP BY date(e.created_at), e.event_type, e.issue_number
+        ORDER BY day
+        """,
+        (since_iso, project, project),
+    ).fetchall()
+
+    # Build per-day buckets
+    from collections import defaultdict
+
+    # day -> { by_stage: {po_failed, dev_rework, qa_fail, review_reject},
+    #          issue_totals: {issue_number: count} }
+    day_data: dict[str, dict] = {}
+
+    # Pre-populate all days in the window with zeros (inclusive of today)
+    for offset in range(days):
+        d = (since_dt + timedelta(days=offset)).isoformat()
+        day_data[d] = {
+            "by_stage": {"po_failed": 0, "dev_rework": 0, "qa_fail": 0, "review_reject": 0},
+            "issue_totals": defaultdict(int),
+        }
+
+    for row in rows:
+        day = row["day"]
+        etype = row["event_type"]
+        issue = row["issue_number"]
+        cnt = row["cnt"]
+
+        if day not in day_data:
+            continue
+
+        stage_key = _REWORK_STAGE_MAP.get(etype)
+        if stage_key:
+            day_data[day]["by_stage"][stage_key] += cnt
+        day_data[day]["issue_totals"][issue] += cnt
+
+    buckets = []
+    for day in sorted(day_data.keys()):
+        d = day_data[day]
+        by_stage = d["by_stage"]
+        total = sum(by_stage.values())
+        top_issues = sorted(d["issue_totals"].items(), key=lambda x: -x[1])[:3]
+        buckets.append(
+            {
+                "date": day,
+                "total_rework_events": total,
+                "by_stage": by_stage,
+                "top_issues": [{"issue_number": n, "count": c} for n, c in top_issues],
+            }
+        )
+
+    return {
+        "window_days": days,
+        "buckets": buckets,
+    }

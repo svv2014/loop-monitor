@@ -241,6 +241,30 @@ export interface SloConfig {
   updated_at: number | null;
 }
 
+export interface CostTimeseriesByStage {
+  po_failed: number;
+  dev_rework: number;
+  qa_fail: number;
+  review_reject: number;
+}
+
+export interface CostTimeseriesTopIssue {
+  issue_number: number;
+  count: number;
+}
+
+export interface CostTimeseriesBucket {
+  date: string;
+  total_rework_events: number;
+  by_stage: CostTimeseriesByStage;
+  top_issues: CostTimeseriesTopIssue[];
+}
+
+export interface CostTimeseriesResponse {
+  window_days: number;
+  buckets: CostTimeseriesBucket[];
+}
+
 export interface IssueCostRow {
   project: string;
   issue_number: number;

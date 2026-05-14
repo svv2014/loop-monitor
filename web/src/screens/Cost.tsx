@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { fetchIssuesCost } from '../lib/api';
+import { fetchIssuesCost, fetchCostTimeseries } from '../lib/api';
 import type { IssueCostRow } from '../lib/types';
+import CostTimeseries from '../components/CostTimeseries';
 
 const LIMIT = 50;
 
@@ -46,11 +47,25 @@ function median(rows: IssueCostRow[]): number | null {
     : sorted[mid].rework_factor;
 }
 
+function parseDayHash(): string | null {
+  const hash = window.location.hash;
+  const m = hash.match(/^#cost_day=(\d{4}-\d{2}-\d{2})$/);
+  return m ? m[1] : null;
+}
+
 export default function Cost() {
   const [offset, setOffset] = useState(0);
   const [allRows, setAllRows] = useState<IssueCostRow[]>([]);
   const [filterProject, setFilterProject] = useState('');
   const [filterPriority, setFilterPriority] = useState('');
+  const [activeDay, setActiveDay] = useState<string | null>(() => parseDayHash());
+
+  // Sync activeDay from hash changes (back/forward nav)
+  useEffect(() => {
+    const onHashChange = () => setActiveDay(parseDayHash());
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
 
   const query = useQuery({
     queryKey: ['issues-cost', offset],
@@ -66,9 +81,35 @@ export default function Cost() {
     staleTime: 0,
   });
 
+  const timeseriesQuery = useQuery({
+    queryKey: ['cost-timeseries', filterProject, filterPriority],
+    queryFn: () => fetchCostTimeseries({
+      days: 30,
+      project: filterProject || undefined,
+      priority: filterPriority || undefined,
+    }),
+    refetchInterval: 60_000,
+    staleTime: 0,
+  });
+
+  function handleDayClick(date: string) {
+    if (activeDay === date) {
+      // toggle off
+      setActiveDay(null);
+      history.pushState(null, '', window.location.pathname + window.location.search);
+    } else {
+      setActiveDay(date);
+      window.location.hash = `cost_day=${date}`;
+    }
+  }
+
   const visible = allRows.filter(r => {
     if (filterProject && r.project !== filterProject) return false;
     if (filterPriority && r.priority !== filterPriority) return false;
+    if (activeDay && r.last_event_at) {
+      const eventDate = r.last_event_at.slice(0, 10);
+      if (eventDate !== activeDay) return false;
+    }
     return true;
   });
 
@@ -109,7 +150,7 @@ export default function Cost() {
         <select
           className="btn"
           value={filterProject}
-          onChange={e => setFilterProject(e.target.value)}
+          onChange={e => { setFilterProject(e.target.value); setOffset(0); setAllRows([]); }}
           style={{ cursor: 'pointer' }}
         >
           <option value="">All projects</option>
@@ -118,7 +159,7 @@ export default function Cost() {
         <select
           className="btn"
           value={filterPriority}
-          onChange={e => setFilterPriority(e.target.value)}
+          onChange={e => { setFilterPriority(e.target.value); setOffset(0); setAllRows([]); }}
           style={{ cursor: 'pointer' }}
         >
           <option value="">All priorities</option>
@@ -127,7 +168,26 @@ export default function Cost() {
           <option value="p2-medium">p2-medium</option>
           <option value="p3-low">p3-low</option>
         </select>
+        {activeDay && (
+          <button
+            className="btn"
+            onClick={() => handleDayClick(activeDay)}
+            style={{ color: 'var(--accent)', borderColor: 'var(--accent)' }}
+          >
+            {activeDay} ×
+          </button>
+        )}
       </div>
+
+      {timeseriesQuery.data && (
+        <div style={{ padding: 'var(--pad-3) var(--pad-4)' }}>
+          <CostTimeseries
+            buckets={timeseriesQuery.data.buckets}
+            activeDayHash={activeDay}
+            onDayClick={handleDayClick}
+          />
+        </div>
+      )}
 
       {query.isLoading && allRows.length === 0 ? (
         <div className="muted" style={{ padding: 'var(--pad-4)' }}>Loading…</div>

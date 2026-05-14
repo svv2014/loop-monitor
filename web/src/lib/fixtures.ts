@@ -20,6 +20,7 @@ import type {
   ClaudeUsage,
   ScannerState,
   IssueCostRow,
+  CostTimeseriesResponse,
 } from './types';
 
 // Fixture data — example projects used for screenshots / Storybook / tests.
@@ -378,4 +379,25 @@ export function getFixtureScannerState(): ScannerState {
       { project: 'loop',         kind: 'issue', number: 142, stage: 'dev', count: 2, max: 2 },
     ],
   };
+}
+
+export function getFixtureCostTimeseries(days = 30): CostTimeseriesResponse {
+  const buckets = Array.from({ length: days }, (_, i) => {
+    const d = new Date(Date.now() - (days - 1 - i) * 86_400_000);
+    const date = d.toISOString().slice(0, 10);
+    const by_stage = {
+      po_failed:     Math.floor(((i * 7 + 3) % 5)),
+      dev_rework:    Math.floor(((i * 11 + 1) % 7)),
+      qa_fail:       Math.floor(((i * 5 + 2) % 4)),
+      review_reject: Math.floor(((i * 3 + 4) % 3)),
+    };
+    const total_rework_events = by_stage.po_failed + by_stage.dev_rework + by_stage.qa_fail + by_stage.review_reject;
+    return {
+      date,
+      total_rework_events,
+      by_stage,
+      top_issues: total_rework_events > 0 ? [{ issue_number: 100 + (i % 10), count: total_rework_events }] : [],
+    };
+  });
+  return { window_days: days, buckets };
 }

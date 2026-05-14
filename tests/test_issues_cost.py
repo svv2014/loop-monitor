@@ -142,6 +142,100 @@ def test_since_filter(tmp_path, monkeypatch):
     assert 61 in issue_numbers
 
 
+# --- /api/cost/timeseries tests ---
+
+def test_cost_timeseries_empty(tmp_path, monkeypatch):
+    """Returns 30 zero-filled buckets when no rework events exist."""
+    client = _make_client(monkeypatch, tmp_path)
+    resp = client.get("/api/cost/timeseries?days=30")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["window_days"] == 30
+    assert len(data["buckets"]) == 30
+    for bucket in data["buckets"]:
+        assert bucket["total_rework_events"] == 0
+        assert bucket["by_stage"] == {"po_failed": 0, "dev_rework": 0, "qa_fail": 0, "review_reject": 0}
+        assert bucket["top_issues"] == []
+
+
+def test_cost_timeseries_aggregates_by_stage(tmp_path, monkeypatch):
+    """Rework events are bucketed by date and classified into the correct stage."""
+    client = _make_client(monkeypatch, tmp_path)
+    from datetime import datetime, timezone
+    today = datetime.now(timezone.utc).date().isoformat()
+    _insert_events(server.db.DB_PATH, [
+        {"project": "proj-ts", "role": "po",     "event_type": "po_failed",
+         "issue_number": 1, "created_at": f"{today}T10:00:00+00:00"},
+        {"project": "proj-ts", "role": "dev",    "event_type": "dev_rework",
+         "issue_number": 2, "created_at": f"{today}T11:00:00+00:00"},
+        {"project": "proj-ts", "role": "qa",     "event_type": "qa_fail",
+         "issue_number": 2, "created_at": f"{today}T12:00:00+00:00"},
+        {"project": "proj-ts", "role": "review", "event_type": "review_reject",
+         "issue_number": 3, "created_at": f"{today}T13:00:00+00:00"},
+    ])
+    resp = client.get("/api/cost/timeseries?days=7")
+    assert resp.status_code == 200
+    buckets = resp.json()["buckets"]
+    today_bucket = next((b for b in buckets if b["date"] == today), None)
+    assert today_bucket is not None
+    assert today_bucket["total_rework_events"] == 4
+    assert today_bucket["by_stage"]["po_failed"] == 1
+    assert today_bucket["by_stage"]["dev_rework"] == 1
+    assert today_bucket["by_stage"]["qa_fail"] == 1
+    assert today_bucket["by_stage"]["review_reject"] == 1
+
+
+def test_cost_timeseries_top_issues(tmp_path, monkeypatch):
+    """top_issues contains up to 3 issues sorted by descending rework count."""
+    client = _make_client(monkeypatch, tmp_path)
+    from datetime import datetime, timezone
+    today = datetime.now(timezone.utc).date().isoformat()
+    ts10 = f"{today}T10:00:00+00:00"
+    ts11 = f"{today}T11:00:00+00:00"
+    ts12 = f"{today}T12:00:00+00:00"
+    ts13 = f"{today}T13:00:00+00:00"
+    events = []
+    for _ in range(3):
+        events.append({"project": "proj-ti", "role": "dev",
+                       "event_type": "dev_rework", "issue_number": 10, "created_at": ts10})
+    for _ in range(2):
+        events.append({"project": "proj-ti", "role": "qa",
+                       "event_type": "qa_fail", "issue_number": 20, "created_at": ts11})
+    events.append({"project": "proj-ti", "role": "po",
+                   "event_type": "po_failed", "issue_number": 30, "created_at": ts12})
+    # 4th issue — should not appear in top_issues
+    events.append({"project": "proj-ti", "role": "po",
+                   "event_type": "po_failed", "issue_number": 40, "created_at": ts13})
+    _insert_events(server.db.DB_PATH, events)
+    resp = client.get("/api/cost/timeseries?days=7&project=proj-ti")
+    assert resp.status_code == 200
+    buckets = resp.json()["buckets"]
+    today_bucket = next(b for b in buckets if b["date"] == today)
+    top = today_bucket["top_issues"]
+    assert len(top) == 3
+    assert top[0]["issue_number"] == 10
+    assert top[0]["count"] == 3
+
+
+def test_cost_timeseries_project_filter(tmp_path, monkeypatch):
+    """project param filters the timeseries to a single project."""
+    client = _make_client(monkeypatch, tmp_path)
+    from datetime import datetime, timezone
+    today = datetime.now(timezone.utc).date().isoformat()
+    _insert_events(server.db.DB_PATH, [
+        {"project": "proj-a", "role": "dev", "event_type": "dev_rework",
+         "issue_number": 1, "created_at": f"{today}T10:00:00+00:00"},
+        {"project": "proj-b", "role": "qa",  "event_type": "qa_fail",
+         "issue_number": 2, "created_at": f"{today}T11:00:00+00:00"},
+    ])
+    resp = client.get("/api/cost/timeseries?days=7&project=proj-a")
+    assert resp.status_code == 200
+    buckets = resp.json()["buckets"]
+    today_bucket = next(b for b in buckets if b["date"] == today)
+    assert today_bucket["by_stage"]["dev_rework"] == 1
+    assert today_bucket["by_stage"]["qa_fail"] == 0
+
+
 # (g) limit + offset paginate correctly
 def test_limit_offset(tmp_path, monkeypatch):
     client = _make_client(monkeypatch, tmp_path, _open_meta)

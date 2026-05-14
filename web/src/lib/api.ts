@@ -24,6 +24,7 @@ import type {
   FailureContext,
   CycleTimesResponse,
   SloConfig,
+  CostTimeseriesResponse,
 } from './types';
 import * as fx from './fixtures';
 
@@ -197,6 +198,25 @@ export async function fetchCycleTimes(project: string): Promise<CycleTimesRespon
 
 export async function fetchSlo(project: string): Promise<SloConfig> {
   return get<SloConfig>(`/api/projects/${encodeURIComponent(project)}/slo`);
+}
+
+export interface CostTimeseriesParams {
+  days?: number;
+  project?: string;
+  priority?: string;
+}
+
+export async function fetchCostTimeseries(params: CostTimeseriesParams = {}): Promise<CostTimeseriesResponse> {
+  if (isFixtureMode()) {
+    const days = params.days ?? 30;
+    return fx.getFixtureCostTimeseries(days);
+  }
+  const p = new URLSearchParams();
+  if (params.days != null)    p.set('days', String(params.days));
+  if (params.project)         p.set('project', params.project);
+  if (params.priority)        p.set('priority', params.priority);
+  const qs = p.size ? `?${p.toString()}` : '';
+  return get<CostTimeseriesResponse>(`/api/cost/timeseries${qs}`);
 }
 
 export async function putSlo(project: string, body: { total_seconds: number | null; breach_grace_seconds: number }): Promise<SloConfig> {
