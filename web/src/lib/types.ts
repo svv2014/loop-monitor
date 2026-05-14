@@ -241,6 +241,20 @@ export interface SloConfig {
   updated_at: number | null;
 }
 
+export interface AnalyticsQualityBucket {
+  label: string;
+  count: number;
+}
+
+export interface AnalyticsQuality {
+  verdicts: { clean: number; light_rework: number; heavy_rework: number; blocked: number };
+  qa_pass_rate: number;
+  qa_pass_rate_daily: { date: string; rate: number }[];
+  stage_failure: { stage: string; fail_rate: number; sample: number }[];
+  rework_dist: { p50: number; p75: number; p95: number; buckets: AnalyticsQualityBucket[] };
+  failure_types: { po_failed: number; dev_failed: number; qa_fail: number; review_failed: number; merge_failed: number };
+}
+
 export interface IssueCostRow {
   project: string;
   issue_number: number;

@@ -21,6 +21,7 @@ import type {
   ScannerState,
   LogsResponse,
   IssueCostRow,
+  AnalyticsQuality,
   FailureContext,
   CycleTimesResponse,
   SloConfig,
@@ -179,6 +180,10 @@ export async function fetchIssuesCost(params: IssuesCostParams = {}): Promise<Is
   if (params.offset != null) p.set('offset', String(params.offset));
   const qs = p.size ? `?${p.toString()}` : '';
   return get<IssueCostRow[]>(`/api/issues/cost${qs}`);
+}
+
+export async function fetchAnalyticsQuality(days = 30): Promise<AnalyticsQuality> {
+  return get<AnalyticsQuality>(`/api/analytics/quality?days=${days}`);
 }
 
 export async function fetchFailureContext(

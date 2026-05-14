@@ -18,6 +18,7 @@ app = FastAPI(title="Loop Monitor", lifespan=lifespan)
 
 from server.routes import (  # noqa: E402
     action_queue,
+    analytics,
     board,
     claude_usage,
     config,
@@ -47,6 +48,7 @@ app.include_router(logs.router)
 app.include_router(scanner_state.router)
 app.include_router(slos.router)
 app.include_router(config.router)
+app.include_router(analytics.router)
 
 if os.path.isdir("static/dist"):
     app.mount("/v2", StaticFiles(directory="static/dist", html=True), name="dist")

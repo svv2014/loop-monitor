@@ -8,6 +8,7 @@ import Logs from './screens/Logs';
 import ProjectDetail from './screens/ProjectDetail';
 import Queue from './screens/Queue';
 import WorkerDetail from './screens/WorkerDetail';
+import Analytics from './screens/Analytics';
 import Cost from './screens/Cost';
 import { useHashRoute } from './router';
 import { fetchActive, fetchHealth } from './lib/api';
@@ -19,18 +20,20 @@ const SCREEN_KEYS: Record<string, string> = {
   '4': 'workers',
   '5': 'logs',
   '6': 'cost',
+  '7': 'analytics',
 };
 
 export default function App() {
   const { screen: hashScreen, projectId: hashProjectId, navigateTo } = useHashRoute();
 
-  // 'cost' is local-only — not stored in the hash — so we track it separately.
+  // 'cost' and 'analytics' are local-only — not stored in the hash.
   const [showCost, setShowCost] = useState(false);
+  const [showAnalytics, setShowAnalytics] = useState(false);
 
   // Derive nav screen from hash. 'project' is a sub-state of 'projects' nav item.
   const hashNavScreen = hashScreen === 'project' ? 'projects' : hashScreen;
-  // When cost is active, override; otherwise use hash-derived value.
-  const navScreen = showCost ? 'cost' : hashNavScreen;
+  // When cost or analytics is active, override; otherwise use hash-derived value.
+  const navScreen = showCost ? 'cost' : showAnalytics ? 'analytics' : hashNavScreen;
   const projectId = hashProjectId;
 
   const [allProjectIds, setAllProjectIds] = useState<string[]>([]);
@@ -46,16 +49,22 @@ export default function App() {
       .catch(() => undefined);
   }, []);
 
-  // When hash changes externally (back/forward), clear cost overlay
+  // When hash changes externally (back/forward), clear local overlays
   useEffect(() => {
     setShowCost(false);
+    setShowAnalytics(false);
   }, [hashScreen]);
 
   function handleNavChange(s: string) {
     if (s === 'cost') {
       setShowCost(true);
+      setShowAnalytics(false);
+    } else if (s === 'analytics') {
+      setShowAnalytics(true);
+      setShowCost(false);
     } else {
       setShowCost(false);
+      setShowAnalytics(false);
       navigateTo(s as 'overview' | 'queue' | 'projects' | 'workers' | 'project' | 'logs', null, {
         drawer: null,
         pushState: true,
@@ -65,11 +74,13 @@ export default function App() {
 
   function handleProjectChange(id: string) {
     setShowCost(false);
+    setShowAnalytics(false);
     navigateTo('project', id, { drawer: null, pushState: true });
   }
 
   function handleBack() {
     setShowCost(false);
+    setShowAnalytics(false);
     navigateTo('overview', null, { pushState: true });
   }
 
@@ -110,7 +121,9 @@ export default function App() {
       <TopBar events={events} online={online} version={version} />
       <NavRail screen={isProjectDetail ? 'projects' : navScreen} setScreen={handleNavChange} />
       <main className="main">
-        {showCost ? (
+        {showAnalytics ? (
+          <Analytics />
+        ) : showCost ? (
           <Cost />
         ) : isProjectDetail && projectId != null ? (
           <ProjectDetail
