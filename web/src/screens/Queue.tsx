@@ -1,10 +1,53 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchActionQueue } from '../lib/api';
 import type { QueueItem } from '../lib/types';
 import FailureInspector from '../components/FailureInspector';
 import Drawer from '../components/Drawer';
 import { useHashRoute } from '../router';
+
+export const PAGE_SIZE = 20;
+
+/** Parse `page` from a hash string (e.g. `#queue?page=2`). Exported for testing. */
+export function parsePageFromHash(hash: string): number {
+  const qIdx = hash.indexOf('?');
+  if (qIdx === -1) return 1;
+  const params = new URLSearchParams(hash.slice(qIdx + 1));
+  const p = parseInt(params.get('page') ?? '1', 10);
+  return Number.isFinite(p) && p >= 1 ? p : 1;
+}
+
+/** Build an updated hash string with `page` set. Exported for testing. */
+export function buildHashWithPage(hash: string, page: number): string {
+  const qIdx = hash.indexOf('?');
+  const route = qIdx === -1 ? hash : hash.slice(0, qIdx);
+  const params = new URLSearchParams(qIdx === -1 ? '' : hash.slice(qIdx + 1));
+  if (page <= 1) {
+    params.delete('page');
+  } else {
+    params.set('page', String(page));
+  }
+  const qs = params.toString();
+  return qs ? `${route}?${qs}` : route;
+}
+
+/** Read `page` from the URL hash. Hash format: `#queue?page=2` or `#queue`. */
+export function readPageFromHash(): number {
+  return parsePageFromHash(window.location.hash);
+}
+
+/** Write `page` into the URL hash, preserving the route segment. */
+export function writePageToHash(page: number): void {
+  window.location.hash = buildHashWithPage(window.location.hash, page);
+}
+
+/** Slice `items` to the requested page. Returns `{ pageItems, totalPages }`. */
+export function paginateItems<T>(items: T[], page: number, pageSize: number = PAGE_SIZE) {
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  const clampedPage = Math.min(Math.max(1, page), totalPages);
+  const start = (clampedPage - 1) * pageSize;
+  return { pageItems: items.slice(start, start + pageSize), totalPages, clampedPage };
+}
 
 function isFailureItem(item: QueueItem): boolean {
   return item.stage === 'needs-clarification' || item.reason === 'qa_fail_repeated';
@@ -175,10 +218,23 @@ export default function Queue({ globalProjectFilter }: QueueProps) {
   const [filterLoop, setFilterLoop] = useState('');
   const [sortCol, setSortCol] = useState<SortCol>('age_seconds');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [page, setPage] = useState<number>(() => readPageFromHash());
+
+  /** Sync page to URL hash and component state together. */
+  const goToPage = useCallback((next: number) => {
+    setPage(next);
+    writePageToHash(next);
+  }, []);
+
+  /** Reset to page 1 when any filter changes. */
+  const setFilterProjectAndReset = useCallback((v: string) => { setFilterProject(v); goToPage(1); }, [goToPage]);
+  const setFilterReasonAndReset  = useCallback((v: string) => { setFilterReason(v);  goToPage(1); }, [goToPage]);
+  const setFilterLoopAndReset    = useCallback((v: string) => { setFilterLoop(v);    goToPage(1); }, [goToPage]);
 
   useEffect(() => {
     setFilterProject(globalProjectFilter ?? '');
-  }, [globalProjectFilter]);
+    goToPage(1);
+  }, [globalProjectFilter, goToPage]);
 
   const projects = useMemo(
     () => [...new Set(items.map(i => i.project))].sort(),
@@ -213,6 +269,19 @@ export default function Queue({ globalProjectFilter }: QueueProps) {
       ),
     [items, filterProject, filterReason, filterLoop, sortCol, sortDir],
   );
+
+  const { pageItems, totalPages, clampedPage } = useMemo(
+    () => paginateItems(allFiltered, page),
+    [allFiltered, page],
+  );
+
+  // If totalPages shrinks (e.g. filter narrowed results), clamp and sync hash.
+  useEffect(() => {
+    if (clampedPage !== page) {
+      setPage(clampedPage);
+      writePageToHash(clampedPage);
+    }
+  }, [clampedPage, page]);
 
   function handleSort(col: SortCol) {
     if (col === sortCol) {
@@ -262,18 +331,18 @@ export default function Queue({ globalProjectFilter }: QueueProps) {
         </div>
 
         <div style={{ display: 'flex', gap: 'var(--pad-2)', marginBottom: 'var(--pad-3)', flexWrap: 'wrap' }}>
-          <select className="btn" value={filterProject} onChange={e => setFilterProject(e.target.value)}>
+          <select className="btn" value={filterProject} onChange={e => setFilterProjectAndReset(e.target.value)}>
             <option value="">All projects</option>
             {projects.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
-          <select className="btn" value={filterReason} onChange={e => setFilterReason(e.target.value)}>
+          <select className="btn" value={filterReason} onChange={e => setFilterReasonAndReset(e.target.value)}>
             <option value="">All reasons</option>
             <option value="stuck_label">stuck_label</option>
             <option value="timeout">timeout</option>
             <option value="qa_fail_repeated">qa_fail_repeated</option>
           </select>
           {showLoopFilter && (
-            <select className="btn" value={filterLoop} onChange={e => setFilterLoop(e.target.value)}>
+            <select className="btn" value={filterLoop} onChange={e => setFilterLoopAndReset(e.target.value)}>
               <option value="">All loops</option>
               {loops.map(l => <option key={l} value={l}>{l}</option>)}
             </select>
@@ -283,13 +352,45 @@ export default function Queue({ globalProjectFilter }: QueueProps) {
         {allFiltered.length === 0 ? (
           <div className="muted" style={{ padding: 'var(--pad-3) 0' }}>No items</div>
         ) : (
-          <QueueTable
-            items={allFiltered}
-            onRowClick={handleRowClick}
-            sortCol={sortCol}
-            sortDir={sortDir}
-            onSort={handleSort}
-          />
+          <>
+            <QueueTable
+              items={pageItems}
+              onRowClick={handleRowClick}
+              sortCol={sortCol}
+              sortDir={sortDir}
+              onSort={handleSort}
+            />
+            {totalPages > 1 && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--pad-2)',
+                  marginTop: 'var(--pad-3)',
+                  fontSize: 12,
+                }}
+                aria-label="Pagination"
+              >
+                <button
+                  className="btn"
+                  onClick={() => goToPage(clampedPage - 1)}
+                  disabled={clampedPage <= 1}
+                  aria-label="Previous page"
+                >
+                  &lt; Prev
+                </button>
+                <span className="muted">Page {clampedPage} of {totalPages}</span>
+                <button
+                  className="btn"
+                  onClick={() => goToPage(clampedPage + 1)}
+                  disabled={clampedPage >= totalPages}
+                  aria-label="Next page"
+                >
+                  Next &gt;
+                </button>
+              </div>
+            )}
+          </>
         )}
       </section>
 

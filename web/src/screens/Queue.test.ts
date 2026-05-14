@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { applyFilters, applySort } from './Queue';
+import { applyFilters, applySort, paginateItems, parsePageFromHash, buildHashWithPage, PAGE_SIZE } from './Queue';
 import type { QueueItem } from '../lib/types';
 
 function item(overrides: Partial<QueueItem> = {}): QueueItem {
@@ -111,5 +111,91 @@ describe('applySort', () => {
     const original = [...items];
     applySort(items, 'age_seconds', 'asc');
     expect(items).toEqual(original);
+  });
+});
+
+// ── paginateItems ─────────────────────────────────────────────────────────────
+
+describe('paginateItems', () => {
+  // Build 25 distinct items
+  const twentyFive = Array.from({ length: 25 }, (_, i) =>
+    item({ number: i + 1, age_seconds: i }),
+  );
+
+  it('PAGE_SIZE is 20', () => {
+    expect(PAGE_SIZE).toBe(20);
+  });
+
+  it('returns 20 items on page 1 when there are 25 items', () => {
+    const { pageItems, totalPages } = paginateItems(twentyFive, 1);
+    expect(pageItems).toHaveLength(20);
+    expect(totalPages).toBe(2);
+  });
+
+  it('returns 5 items on page 2 when there are 25 items', () => {
+    const { pageItems } = paginateItems(twentyFive, 2);
+    expect(pageItems).toHaveLength(5);
+  });
+
+  it('clamps page to 1 when page < 1', () => {
+    const { clampedPage, pageItems } = paginateItems(twentyFive, 0);
+    expect(clampedPage).toBe(1);
+    expect(pageItems).toHaveLength(20);
+  });
+
+  it('clamps page to totalPages when page exceeds totalPages', () => {
+    const { clampedPage, pageItems } = paginateItems(twentyFive, 99);
+    expect(clampedPage).toBe(2);
+    expect(pageItems).toHaveLength(5);
+  });
+
+  it('returns all items on page 1 when items <= PAGE_SIZE', () => {
+    const five = twentyFive.slice(0, 5);
+    const { pageItems, totalPages } = paginateItems(five, 1);
+    expect(pageItems).toHaveLength(5);
+    expect(totalPages).toBe(1);
+  });
+
+  it('returns empty array when items is empty', () => {
+    const { pageItems, totalPages } = paginateItems([], 1);
+    expect(pageItems).toHaveLength(0);
+    expect(totalPages).toBe(1);
+  });
+});
+
+// ── parsePageFromHash / buildHashWithPage ─────────────────────────────────────
+
+describe('parsePageFromHash', () => {
+  it('returns 1 when hash has no page param', () => {
+    expect(parsePageFromHash('#queue')).toBe(1);
+  });
+
+  it('returns the page number when hash contains page param', () => {
+    expect(parsePageFromHash('#queue?page=3')).toBe(3);
+  });
+
+  it('returns 1 for invalid page values', () => {
+    expect(parsePageFromHash('#queue?page=abc')).toBe(1);
+  });
+
+  it('returns 1 for page=0', () => {
+    expect(parsePageFromHash('#queue?page=0')).toBe(1);
+  });
+});
+
+describe('buildHashWithPage', () => {
+  it('adds page param for page > 1', () => {
+    expect(buildHashWithPage('#queue', 2)).toBe('#queue?page=2');
+  });
+
+  it('removes page param for page 1', () => {
+    expect(buildHashWithPage('#queue?page=3', 1)).toBe('#queue');
+  });
+
+  it('preserves other query params alongside page', () => {
+    const result = buildHashWithPage('#queue?foo=bar', 4);
+    const params = new URLSearchParams(result.split('?')[1]);
+    expect(params.get('page')).toBe('4');
+    expect(params.get('foo')).toBe('bar');
   });
 });
