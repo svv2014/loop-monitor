@@ -181,6 +181,34 @@ Events tied to an in-progress pipeline run are never pruned, regardless of age.
 
 ## Scripts
 
+### `scripts/redeploy.sh` — update and restart the service
+
+Pulls the latest `main` from GitHub into the dedicated service checkout, rebuilds the web bundle, and restarts the launchd service. Run this whenever the dashboard shows the "behind main" banner.
+
+**One-time bootstrap** (creates the dedicated service checkout):
+
+```bash
+git clone https://github.com/svv2014/loop-monitor.git \
+  ~/.openclaw/workspace/services/loop-monitor
+cd ~/.openclaw/workspace/services/loop-monitor/web && npm ci && npm run build && cd ..
+cp scripts/com.user.loop-monitor.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.user.loop-monitor.plist
+```
+
+The service runs from `~/.openclaw/workspace/services/loop-monitor` — a separate clone that the pipeline working tree never touches. The pipeline continues to use its own working tree at `projects/loop-monitor`.
+
+**Redeploy** (pull latest main + restart):
+
+```bash
+scripts/redeploy.sh
+```
+
+The script is idempotent and exits non-zero on any failed step. You can also override the checkout path or launchd label:
+
+```bash
+scripts/redeploy.sh --checkout /some/other/path --label com.user.loop-monitor
+```
+
 ### `scripts/release.sh patch|minor|major`
 
 Bumps VERSION, updates CHANGELOG.md, commits, tags, and creates a GitHub release with extracted changelog notes.

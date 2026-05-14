@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  loop-monitor server — runs from the dedicated service checkout so the
+  autonomous pipeline working tree can change branches freely without
+  affecting the running service.
+
+  Bootstrap (one-time):
+    git clone https://github.com/svv2014/loop-monitor.git \
+      ~/.openclaw/workspace/services/loop-monitor
+    cd ~/.openclaw/workspace/services/loop-monitor/web && npm ci && npm run build && cd ..
+
+  Install:
+    cp scripts/com.user.loop-monitor.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.user.loop-monitor.plist
+
+  Update (pull latest + restart):
+    scripts/redeploy.sh
+
+  Disable:
+    launchctl unload ~/Library/LaunchAgents/com.user.loop-monitor.plist
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.user.loop-monitor</string>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/vadim/.openclaw/workspace/services/loop-monitor</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/vadim/.openclaw/workspace/services/loop-monitor/run.sh</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/loop-monitor.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/loop-monitor.err.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+</dict>
+</plist>

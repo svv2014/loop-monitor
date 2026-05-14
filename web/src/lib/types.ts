@@ -135,6 +135,8 @@ export interface Health {
   status: string;
   monitor_version: string;
   git_sha: string;
+  latest_main_sha?: string | null;
+  commit_delta?: number | null;
   supported_bounty_api: string;
   core_version_counts: Record<string, number>;
   loop_ids: string[];
