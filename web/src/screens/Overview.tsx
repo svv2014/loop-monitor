@@ -178,7 +178,7 @@ export default function Overview({ globalProjectFilter }: OverviewProps) {
           </div>
         </div>
 
-        <ClaudeUsage />
+        <ClaudeUsage activeFilter={globalProjectFilter} />
         <Charts />
 
       </div>

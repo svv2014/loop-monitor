@@ -17,7 +17,11 @@ function fmtDur(seconds: number): string {
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
-export default function ClaudeUsage() {
+interface ClaudeUsageProps {
+  activeFilter?: string | null;
+}
+
+export default function ClaudeUsage({ activeFilter }: ClaudeUsageProps) {
   const { data, isError } = useQuery({
     queryKey: ['claude-usage'],
     queryFn: fetchClaudeUsage,
@@ -54,7 +58,12 @@ export default function ClaudeUsage() {
 
   return (
     <div className="panel">
-      <div className="panel-h"><span>Claude Usage</span></div>
+      <div className="panel-h">
+        <span>Claude Usage</span>
+        {activeFilter && (
+          <span style={{ fontSize: '0.72rem', color: 'var(--fg-3)', marginLeft: 6 }}>account-wide</span>
+        )}
+      </div>
       <div style={{ padding: 'var(--pad-3)' }}>
         <div className="usage-bar">
           <div className={fillClass} style={{ width: `${pct}%` }} />
