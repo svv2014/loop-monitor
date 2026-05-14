@@ -11,7 +11,7 @@ import WorkerDetail from './screens/WorkerDetail';
 import Cost from './screens/Cost';
 import Analytics from './screens/Analytics';
 import { useHashRoute } from './router';
-import { fetchActive, fetchHealth } from './lib/api';
+import { fetchActive, fetchFeed, fetchHealth } from './lib/api';
 
 const SCREEN_KEYS: Record<string, string> = {
   '1': 'overview',
@@ -83,6 +83,13 @@ export default function App() {
     staleTime: 0,
   });
 
+  const feedQuery = useQuery({
+    queryKey: ['feed'],
+    queryFn: () => fetchFeed({ limit: 200 }),
+    refetchInterval: 5000,
+    staleTime: 0,
+  });
+
   const healthQuery = useQuery({
     queryKey: ['health'],
     queryFn: () => fetchHealth(),
@@ -99,8 +106,8 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const events = (activeQuery.data ?? []).map((w) => ({
-    ts: new Date(w.created_at).getTime(),
+  const events = (feedQuery.data ?? []).map((f) => ({
+    ts: new Date(f.created_at).getTime(),
   }));
   const online = !activeQuery.isError;
   const version = healthQuery.data?.monitor_version ?? '…';
