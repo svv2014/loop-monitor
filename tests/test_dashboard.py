@@ -1,24 +1,19 @@
 from scripts.dashboard import (
-    _since,
-    _event_glyph,
-    _hbar,
-    _colorize,
-    _role_color,
-    render_feed_items,
-    render_leaderboard_items,
-    render_banner,
-    CARD_INNER,
-    NARROW_COLS,
-    _V,
     _H,
-    _TL,
-    _TR,
-    _BL,
-    _BR,
     _LT,
     _RT,
+    _TL,
+    _TR,
+    _colorize,
+    _event_glyph,
+    _hbar,
+    _role_color,
+    _since,
+    render_banner,
+    render_cards,
+    render_feed_items,
+    render_leaderboard_items,
 )
-
 
 # ── _since ────────────────────────────────────────────────────────────────────
 
@@ -187,3 +182,35 @@ def test_render_banner_all_lines_same_width():
     # Unicode box chars are 1 display column each; line length == cols
     for line in lines:
         assert len(line) == cols, f"Expected width {cols}, got {len(line)}: {line!r}"
+
+
+# ── render_cards ──────────────────────────────────────────────────────────────
+
+def test_render_cards_idle_status():
+    board = [{"project": "proj-a", "total_points": 5}]
+    lines = render_cards(board, set(), {}, set(), 80, False)
+    combined = "\n".join(lines)
+    assert "idle" in combined
+    assert "proj-a" in combined
+
+
+def test_render_cards_busy_status():
+    board = [{"project": "proj-b", "total_points": 10}]
+    lines = render_cards(board, {"proj-b"}, {}, set(), 80, False)
+    combined = "\n".join(lines)
+    assert "busy" in combined
+
+
+def test_render_cards_wait_status():
+    board = [{"project": "proj-c", "total_points": 3}]
+    lines = render_cards(board, set(), {}, {"proj-c"}, 80, False)
+    combined = "\n".join(lines)
+    assert "wait" in combined
+
+
+def test_render_cards_wait_takes_priority_over_busy():
+    board = [{"project": "proj-d", "total_points": 7}]
+    lines = render_cards(board, {"proj-d"}, {}, {"proj-d"}, 80, False)
+    combined = "\n".join(lines)
+    assert "wait" in combined
+    assert "busy" not in combined

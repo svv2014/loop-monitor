@@ -195,6 +195,7 @@ def render_cards(
     board: list[dict],
     active_projects: set[str],
     last_age: dict[str, str],
+    queue_projects: set[str],
     cols: int,
     use_color: bool,
 ) -> list[str]:
@@ -221,7 +222,7 @@ def render_cards(
         rendered_cards = [
             _render_single_card(
                 p,
-                "busy" if p in active_projects else "idle",
+                "wait" if p in queue_projects else "busy" if p in active_projects else "idle",
                 project_pts[p],
                 last_age.get(p, "?"),
                 use_color,
@@ -337,6 +338,7 @@ def render_narrow(
     feed: list[dict],
     board: list[dict],
     active_projects: set[str],
+    queue_projects: set[str],
     verdict: dict | None,
     cols: int,
     use_color: bool,
@@ -356,7 +358,7 @@ def render_narrow(
         parts.append("  No project data.")
     else:
         for proj in sorted(project_pts):
-            status = "busy" if proj in active_projects else "idle"
+            status = "wait" if proj in queue_projects else "busy" if proj in active_projects else "idle"
             parts.append(f"  {proj}: ◉ {status}  {project_pts[proj]} pts")
 
     parts += ["", "LIVE FEED"]
@@ -401,6 +403,13 @@ def render_snapshot(base_url: str, use_color: bool) -> str:
     board_data: list[dict] = fetch_json(base_url, "/api/board") or []
     feed_data: list[dict] = fetch_json(base_url, "/api/feed") or []
 
+    queue_projects: set[str] = set()
+    try:
+        queue_data: list[dict] = fetch_json(base_url, "/api/action_queue") or []
+        queue_projects = {r.get("project", "") for r in queue_data if r.get("project")}
+    except Exception:
+        pass
+
     latest_verdict: dict | None = None
     try:
         verdicts: list[dict] = fetch_json(base_url, "/api/verdicts") or []
@@ -420,12 +429,12 @@ def render_snapshot(base_url: str, use_color: bool) -> str:
 
     if cols < NARROW_COLS:
         return render_narrow(
-            base_url, feed_data, board_data, active_projects, latest_verdict, cols, use_color
+            base_url, feed_data, board_data, active_projects, queue_projects, latest_verdict, cols, use_color
         )
 
     lines: list[str] = []
     lines += render_banner(base_url, cols, use_color)
-    lines += render_cards(board_data, active_projects, last_age, cols, use_color)
+    lines += render_cards(board_data, active_projects, last_age, queue_projects, cols, use_color)
     lines += render_two_columns(feed_data, board_data, cols, use_color)
     lines += render_verdict(latest_verdict, cols, use_color)
     lines.append(_hbar(cols, _BL, _BR))
