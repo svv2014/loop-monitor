@@ -10,6 +10,23 @@ its own version (currently `1.0`) baked into every payload.
 
 ## [Unreleased]
 
+### Added
+- Read-time mapper for legacy `event_type='judge'` rows: applies in feed,
+  history, status, PR-timeline fallback, and 24h graph aggregation. Maps
+  legacy rows to the canonical `role='judge'` / `event_type='judge_done'`
+  shape. Idempotent for already-correct rows. (#213)
+
+### Fixed
+- `/api/feed?role=dev` no longer returns legacy judge rows that get
+  remapped to `role='judge'` at output (would cause `dev` filter to
+  return rows displayed as `judge` — confusing). Filter now excludes
+  rows with `event_type='judge'` from non-judge role queries. (#213)
+- `/api/events_graph` GROUP BY now uses the CASE expression directly
+  instead of the SELECT alias `role`. In SQLite, `GROUP BY role`
+  resolves to the column, not the alias, so a same-hour mix of legacy
+  judge rows and dev_done rows would merge into one bucket with
+  non-deterministic role attribution. (#213)
+
 ## [0.3.0] - 2026-05-14
 
 The "Dope UI" milestone — React/Vite frontend replaces the vanilla-JS

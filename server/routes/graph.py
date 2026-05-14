@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from server.constants import PROJECTS
 from server.db import db_dep
+from server.helpers.event_mapping import remap_legacy_judge_event
 from server.helpers.timeline import build_timeline_events, parse_ts
 
 router = APIRouter()
@@ -46,7 +47,7 @@ def _get_timeline_data(conn: sqlite3.Connection, project: str, issue: int) -> di
             (project, issue),
         ).fetchall()
 
-    events = build_timeline_events(history_rows)
+    events = build_timeline_events([remap_legacy_judge_event(dict(r)) for r in history_rows])
 
     total_elapsed_seconds = None
     ts_candidates = []
@@ -91,7 +92,7 @@ def get_timeline_by_pr(project: str, pr_number: int, conn: sqlite3.Connection = 
             "project": project,
             "issue_number": None,
             "summary": {},
-            "events": [dict(r) for r in rows],
+            "events": [remap_legacy_judge_event(dict(r)) for r in rows],
         }
 
     return _get_timeline_data(conn, project, run_row["issue_number"])
@@ -106,11 +107,19 @@ def get_timeline(project: str, issue: int, conn: sqlite3.Connection = Depends(db
 @router.get("/api/events_graph")
 def get_events_graph(window: int = 24, conn: sqlite3.Connection = Depends(db_dep)):
     window = max(1, min(window, 168))
+    # Bug fix: GROUP BY must use the CASE expression directly, not the
+    # alias `role`. In SQLite `GROUP BY role` resolves to the column, not
+    # the SELECT alias — so legacy judge rows (role='dev', event_type='judge')
+    # would group with regular dev_done in the same hour. Repeating the
+    # CASE keeps the grouping aligned with what we project.
     rows = conn.execute(
-        """SELECT strftime('%Y-%m-%dT%H:00:00', created_at) AS hour, role, COUNT(*) AS count
+        """SELECT
+              strftime('%Y-%m-%dT%H:00:00', created_at) AS hour,
+              CASE WHEN event_type = 'judge' THEN 'judge' ELSE role END AS role,
+              COUNT(*) AS count
            FROM events
            WHERE created_at > datetime('now', ? || ' hours')
-           GROUP BY hour, role
+           GROUP BY hour, CASE WHEN event_type = 'judge' THEN 'judge' ELSE role END
            ORDER BY hour""",
         (f"-{window}",),
     ).fetchall()

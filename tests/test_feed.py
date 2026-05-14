@@ -164,3 +164,75 @@ def test_feed_role_filter_preserves_loop_id(isolated_client):
     data = resp.json()
     assert len(data) >= 1
     assert all(item["role"] == "dev" for item in data)
+
+
+def test_feed_remaps_legacy_judge_rows_and_filters_as_done(isolated_client):
+    conn = sqlite3.connect(server.db.DB_PATH)
+    conn.execute(
+        """INSERT INTO events
+           (project, role, event_type, issue_number, created_at)
+           VALUES (?, ?, ?, ?, datetime('now'))""",
+        ("proj-judge", "dev", "judge", 213),
+    )
+    conn.commit()
+    conn.close()
+
+    resp = isolated_client.get("/api/feed?role=judge&status=done")
+    assert resp.status_code == 200
+    item = next((i for i in resp.json() if i["project"] == "proj-judge"), None)
+
+    assert item is not None
+    assert item["role"] == "judge"
+    assert item["event_type"] == "judge_done"
+    assert item["status"] == "done"
+
+
+def test_history_includes_legacy_judge_rows_with_null_duration(isolated_client):
+    conn = sqlite3.connect(server.db.DB_PATH)
+    conn.execute(
+        """INSERT INTO events
+           (project, role, event_type, issue_number, created_at)
+           VALUES (?, ?, ?, ?, datetime('now'))""",
+        ("proj-history-judge", "dev", "judge", 213),
+    )
+    conn.commit()
+    conn.close()
+
+    resp = isolated_client.get("/api/history")
+    assert resp.status_code == 200
+    item = next((i for i in resp.json() if i["project"] == "proj-history-judge"), None)
+
+    assert item is not None
+    assert item["role"] == "judge"
+    assert item["event_type"] == "judge_done"
+    assert item["duration_seconds"] is None
+
+
+def test_feed_role_dev_excludes_legacy_judge_rows(isolated_client):
+    """Regression: role=dev filter must NOT return legacy judge rows that
+    happen to have role='dev' + event_type='judge' in the DB. Otherwise
+    they remap to role='judge' at read time and a UI filtering for dev
+    sees rows displayed as judge — confusing."""
+    conn = sqlite3.connect(server.db.DB_PATH)
+    conn.execute(
+        """INSERT INTO events
+           (project, role, event_type, issue_number, created_at)
+           VALUES (?, ?, ?, ?, datetime('now'))""",
+        ("proj-dev-exclude", "dev", "judge", 213),
+    )
+    conn.execute(
+        """INSERT INTO events
+           (project, role, event_type, issue_number, created_at)
+           VALUES (?, ?, ?, ?, datetime('now'))""",
+        ("proj-dev-exclude", "dev", "dev_done", 999),
+    )
+    conn.commit()
+    conn.close()
+
+    resp = isolated_client.get("/api/feed?role=dev")
+    assert resp.status_code == 200
+    items = [i for i in resp.json() if i["project"] == "proj-dev-exclude"]
+    # Only the dev_done row should appear; the legacy judge row is filtered out.
+    assert len(items) == 1
+    assert items[0]["event_type"] == "dev_done"
+    assert items[0]["issue_number"] == 999

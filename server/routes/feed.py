@@ -6,6 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends
 
 from server.db import db_dep
+from server.helpers.event_mapping import remap_legacy_judge_event
 
 router = APIRouter()
 
@@ -45,12 +46,17 @@ def history(limit: int = 50, loop_id: Optional[str] = None, conn: sqlite3.Connec
                   AND v2.created_at >= d.created_at
                   AND v2.reason LIKE '%auto: ' || d.event_type || '%'
             )
-        WHERE (d.event_type LIKE '%_done' OR d.event_type LIKE '%_pass' OR d.event_type LIKE '%_failed')
+        WHERE (
+            d.event_type LIKE '%_done'
+            OR d.event_type LIKE '%_pass'
+            OR d.event_type LIKE '%_failed'
+            OR d.event_type = 'judge'
+        )
         {loop_clause}
         ORDER BY d.id DESC
         LIMIT ?
     """, params).fetchall()
-    return [dict(r) for r in rows]
+    return [remap_legacy_judge_event(dict(r)) for r in rows]
 
 
 @router.get("/api/active")
@@ -103,11 +109,22 @@ def feed(
         params.append(loop_id)
 
     if role:
-        where_clauses.append("lower(role) = lower(?)")
-        params.append(role)
+        if role.lower() == "judge":
+            where_clauses.append("(lower(role) = lower(?) OR event_type = 'judge')")
+            params.append(role)
+        else:
+            # Bug fix: exclude legacy-judge rows from non-judge role filters.
+            # Legacy rows have role='dev' + event_type='judge' in the DB and get
+            # remapped to role='judge' at read time. Without this filter,
+            # `role=dev` queries leaked legacy-judge rows that then rendered as
+            # 'judge' — confusing for any UI consumer.
+            where_clauses.append("lower(role) = lower(?) AND event_type != 'judge'")
+            params.append(role)
 
     if status_lower == 'fail':
         where_clauses.append("(event_type LIKE '%_fail' OR event_type LIKE '%_failed')")
+    elif status_lower == 'done':
+        where_clauses.append("(event_type LIKE '%_done' OR event_type = 'judge')")
     elif status_lower:
         where_clauses.append(f"event_type LIKE '%_{status_lower}'")
 
@@ -122,7 +139,7 @@ def feed(
     now = datetime.now(timezone.utc)
     result = []
     for r in rows:
-        entry = dict(r)
+        entry = remap_legacy_judge_event(dict(r))
         if entry["payload"]:
             entry["payload"] = json.loads(entry["payload"])
         try:
@@ -150,7 +167,7 @@ def status(conn: sqlite3.Connection = Depends(db_dep)):
     """).fetchall()
     result = []
     for r in rows:
-        entry = dict(r)
+        entry = remap_legacy_judge_event(dict(r))
         if entry["payload"]:
             entry["payload"] = json.loads(entry["payload"])
         result.append(entry)
