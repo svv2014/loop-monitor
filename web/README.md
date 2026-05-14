@@ -22,7 +22,7 @@ Starts the Vite dev server (default port 5173). The `/api/*` prefix is proxied t
 npm run build
 ```
 
-Outputs to `../static/dist/`. FastAPI serves this at `/v2` when the directory exists.
+Outputs to `../static/dist/`. FastAPI serves this at `/`.
 
 ## Type-check
 

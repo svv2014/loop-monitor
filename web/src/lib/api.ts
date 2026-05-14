@@ -1,4 +1,4 @@
-// Thin fetch client mirroring the endpoints in static/js/api.js.
+// Thin fetch client for the loop-monitor API.
 // When ?fixtures=1 is in the URL every function returns seeded data
 // and makes zero network calls — verifiable in DevTools Network tab.
 import type {
