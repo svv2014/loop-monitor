@@ -204,6 +204,10 @@ python3 scripts/dashboard.py --once                # one snapshot, exit 0
 python3 scripts/dashboard.py --url http://host:18792 --once
 ```
 
+![loop-monitor terminal dashboard](docs/screenshots/cli-dashboard.png)
+
+*Same data as the web Overview, rendered in your terminal. Useful for SSH sessions, daily cron summaries, or any environment where the browser isn't convenient.*
+
 ## Security
 
 loop-monitor is **designed to bind to `127.0.0.1`**. The bounty event API has **no authentication**. Don't expose port 18792 to the network.
