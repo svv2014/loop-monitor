@@ -18,6 +18,7 @@ app = FastAPI(title="Loop Monitor", lifespan=lifespan)
 
 from server.routes import (  # noqa: E402
     action_queue,
+    analytics,
     board,
     claude_usage,
     config,
@@ -33,6 +34,7 @@ from server.routes import (  # noqa: E402
     stats,
 )
 
+app.include_router(analytics.router)
 app.include_router(health.router)
 app.include_router(ingest.router)
 app.include_router(board.router)

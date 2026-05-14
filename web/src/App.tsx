@@ -9,6 +9,7 @@ import ProjectDetail from './screens/ProjectDetail';
 import Queue from './screens/Queue';
 import WorkerDetail from './screens/WorkerDetail';
 import Cost from './screens/Cost';
+import Analytics from './screens/Analytics';
 import { useHashRoute } from './router';
 import { fetchActive, fetchHealth } from './lib/api';
 
@@ -127,6 +128,8 @@ export default function App() {
           <WorkerDetail />
         ) : hashNavScreen === 'logs' ? (
           <Logs />
+        ) : hashNavScreen === 'analytics' ? (
+          <Analytics />
         ) : (
           <div style={{ padding: 'var(--pad-4)' }}>
             <p className="muted mono" style={{ fontSize: 12 }}>

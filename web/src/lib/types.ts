@@ -241,6 +241,26 @@ export interface SloConfig {
   updated_at: number | null;
 }
 
+export interface CycleTimeStage {
+  stage: string;
+  p50: number;
+  p75: number;
+  p95: number;
+  count: number;
+}
+
+export interface CycleTimePct {
+  p50: number;
+  p75: number;
+  p95: number;
+  count: number;
+}
+
+export interface CycleTimeAnalyticsResponse {
+  stages: CycleTimeStage[];
+  lead_time: CycleTimePct | null;
+}
+
 export interface IssueCostRow {
   project: string;
   issue_number: number;

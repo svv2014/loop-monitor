@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
-export type Screen = 'overview' | 'queue' | 'projects' | 'workers' | 'project' | 'logs';
+export type Screen = 'overview' | 'queue' | 'projects' | 'workers' | 'project' | 'logs' | 'analytics';
 
 export interface HashRoute {
   screen: Screen;
