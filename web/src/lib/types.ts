@@ -273,3 +273,21 @@ export interface IssueCostRow {
   last_event_at: string | null;
   github_url: string | null;
 }
+
+export interface CostTrendBucket {
+  date: string;
+  median_rework_factor: number | null;
+  issue_count: number;
+}
+
+export interface CostTrend {
+  window_days: number;
+  today: {
+    median_rework_factor: number | null;
+    issue_count: number;
+  };
+  vs_7d: number | null;
+  vs_30d: number | null;
+  trend: 'improving' | 'degrading' | 'stable';
+  buckets: CostTrendBucket[];
+}
