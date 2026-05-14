@@ -9,6 +9,7 @@ import ProjectDetail from './screens/ProjectDetail';
 import Queue from './screens/Queue';
 import WorkerDetail from './screens/WorkerDetail';
 import Cost from './screens/Cost';
+import Timeline from './screens/Timeline';
 import { useHashRoute } from './router';
 import { fetchActive, fetchHealth } from './lib/api';
 
@@ -22,13 +23,14 @@ const SCREEN_KEYS: Record<string, string> = {
 };
 
 export default function App() {
-  const { screen: hashScreen, projectId: hashProjectId, navigateTo } = useHashRoute();
+  const { screen: hashScreen, projectId: hashProjectId, ticketNum: hashTicketNum, navigateTo } = useHashRoute();
 
   // 'cost' is local-only — not stored in the hash — so we track it separately.
   const [showCost, setShowCost] = useState(false);
 
   // Derive nav screen from hash. 'project' is a sub-state of 'projects' nav item.
-  const hashNavScreen = hashScreen === 'project' ? 'projects' : hashScreen;
+  // 'timeline' is also a sub-state of 'projects' nav item.
+  const hashNavScreen = (hashScreen === 'project' || hashScreen === 'timeline') ? 'projects' : hashScreen;
   // When cost is active, override; otherwise use hash-derived value.
   const navScreen = showCost ? 'cost' : hashNavScreen;
   const projectId = hashProjectId;
@@ -56,11 +58,17 @@ export default function App() {
       setShowCost(true);
     } else {
       setShowCost(false);
-      navigateTo(s as 'overview' | 'queue' | 'projects' | 'workers' | 'project' | 'logs', null, {
+      navigateTo(s as 'overview' | 'queue' | 'projects' | 'workers' | 'project' | 'logs' | 'timeline', null, {
         drawer: null,
+        ticketNum: null,
         pushState: true,
       });
     }
+  }
+
+  function handleTimelineOpen(slug: string, num: number) {
+    setShowCost(false);
+    navigateTo('timeline', slug, { ticketNum: num, drawer: null, pushState: true });
   }
 
   function handleProjectChange(id: string) {
@@ -73,7 +81,8 @@ export default function App() {
     navigateTo('overview', null, { pushState: true });
   }
 
-  const isProjectDetail = hashNavScreen === 'projects' && projectId != null;
+  const isProjectDetail = hashScreen === 'project' && projectId != null;
+  const isTimeline = hashScreen === 'timeline' && projectId != null && hashTicketNum != null;
 
   const activeQuery = useQuery({
     queryKey: ['active'],
@@ -108,16 +117,23 @@ export default function App() {
     <div className="app">
       <Logo />
       <TopBar events={events} online={online} version={version} />
-      <NavRail screen={isProjectDetail ? 'projects' : navScreen} setScreen={handleNavChange} />
+      <NavRail screen={(isProjectDetail || isTimeline) ? 'projects' : navScreen} setScreen={handleNavChange} />
       <main className="main">
         {showCost ? (
           <Cost />
+        ) : isTimeline && projectId != null && hashTicketNum != null ? (
+          <Timeline
+            slug={projectId}
+            num={hashTicketNum}
+            onBack={() => navigateTo('project', projectId, { drawer: null, ticketNum: null, pushState: true })}
+          />
         ) : isProjectDetail && projectId != null ? (
           <ProjectDetail
             projectId={projectId}
             allProjectIds={allProjectIds.length > 0 ? allProjectIds : [projectId]}
             onBack={handleBack}
             onProjectChange={handleProjectChange}
+            onTimelineOpen={handleTimelineOpen}
           />
         ) : hashNavScreen === 'overview' ? (
           <Overview />
