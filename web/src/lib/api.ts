@@ -27,6 +27,7 @@ import type {
   SloConfig,
   CostTrend,
   QualityAnalyticsResponse,
+  CostTimeseries,
 } from './types';
 import * as fx from './fixtures';
 
@@ -171,6 +172,7 @@ export async function fetchRoles(): Promise<RoleConfig[]> {
 export interface IssuesCostParams {
   project?: string;
   since?: string;
+  day?: string;
   limit?: number;
   offset?: number;
 }
@@ -189,10 +191,20 @@ export async function fetchIssuesCost(params: IssuesCostParams = {}): Promise<Is
   const p = new URLSearchParams();
   if (params.project) p.set('project', params.project);
   if (params.since)   p.set('since', params.since);
+  if (params.day)     p.set('day', params.day);
   if (params.limit != null)  p.set('limit', String(params.limit));
   if (params.offset != null) p.set('offset', String(params.offset));
   const qs = p.size ? `?${p.toString()}` : '';
   return get<IssueCostRow[]>(`/api/issues/cost${qs}`);
+}
+
+export async function fetchCostTimeseries(params: { days?: number; project?: string; priority?: string } = {}): Promise<CostTimeseries> {
+  const p = new URLSearchParams();
+  if (params.days != null) p.set('days', String(params.days));
+  if (params.project)      p.set('project', params.project);
+  if (params.priority)     p.set('priority', params.priority);
+  const qs = p.size ? `?${p.toString()}` : '';
+  return get<CostTimeseries>(`/api/cost/timeseries${qs}`);
 }
 
 export async function fetchFailureContext(

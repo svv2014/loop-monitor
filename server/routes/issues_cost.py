@@ -123,68 +123,137 @@ def _build_row(raw: dict, meta: dict, now_ts: float) -> dict:
     }
 
 
+_REWORK_EVENT_TYPES = ("po_failed", "dev_failed", "dev_rework", "qa_failed", "review_failed")
+
+
 @router.get("/api/issues/cost")
 def get_issues_cost(
     project: Optional[str] = None,
     since: Optional[str] = None,
+    day: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
     conn: sqlite3.Connection = Depends(db_dep),
 ) -> list:
-    if since is None:
+    if day is not None:
+        # Filter to issues that had rework events on a specific date (YYYY-MM-DD)
+        since_iso = f"{day}T00:00:00+00:00"
+        until_iso = f"{day}T23:59:59+00:00"
+    elif since is None:
         since_dt = datetime.now(timezone.utc) - timedelta(days=30)
         since_iso = since_dt.isoformat()
+        until_iso = None
     else:
         since_iso = since
+        until_iso = None
 
     project_param: Optional[str] = project
 
-    rows = conn.execute(
-        """
-        WITH agg AS (
+    rework_types_ph = ",".join("?" * len(_REWORK_EVENT_TYPES))
+
+    if day is not None:
+        # Filter to issues that had rework events on the specified day;
+        # aggregate their full history so actual_runs reflects total pipeline runs.
+        params_day = [since_iso, until_iso, project_param, project_param, *_REWORK_EVENT_TYPES, limit, offset]
+        rows = conn.execute(
+            f"""
+            WITH rework_issues AS (
+                SELECT DISTINCT project, issue_number
+                FROM events
+                WHERE issue_number IS NOT NULL
+                  AND created_at >= ?
+                  AND created_at <= ?
+                  AND (? IS NULL OR project = ?)
+                  AND event_type IN ({rework_types_ph})
+            ),
+            agg AS (
+                SELECT
+                    e.project,
+                    e.issue_number,
+                    MIN(e.created_at)                                                    AS first_event,
+                    MAX(e.created_at)                                                    AS last_event,
+                    SUM(CASE WHEN e.event_type LIKE '%_start'   THEN 1 ELSE 0 END)      AS actual_runs,
+                    SUM(CASE WHEN e.event_type = 'po_start'     THEN 1 ELSE 0 END)      AS po_runs,
+                    SUM(CASE WHEN e.event_type = 'po_failed'    THEN 1 ELSE 0 END)      AS po_failed,
+                    SUM(CASE WHEN e.event_type = 'dev_start'    THEN 1 ELSE 0 END)      AS dev_runs,
+                    SUM(CASE WHEN e.event_type = 'dev_failed'   THEN 1 ELSE 0 END)      AS dev_failed,
+                    SUM(CASE WHEN e.event_type = 'review_start' THEN 1 ELSE 0 END)      AS review_runs,
+                    SUM(CASE WHEN e.event_type = 'review_failed' THEN 1 ELSE 0 END)     AS review_failed,
+                    SUM(CASE WHEN e.event_type = 'qa_start'     THEN 1 ELSE 0 END)      AS qa_runs,
+                    SUM(CASE WHEN e.event_type = 'qa_failed'    THEN 1 ELSE 0 END)      AS qa_failed,
+                    SUM(CASE WHEN e.event_type = 'merge_start'  THEN 1 ELSE 0 END)      AS merge_runs,
+                    SUM(CASE WHEN e.event_type = 'merge_failed' THEN 1 ELSE 0 END)      AS merge_failed
+                FROM events e
+                JOIN rework_issues ri ON ri.project = e.project AND ri.issue_number = e.issue_number
+                GROUP BY e.project, e.issue_number
+                ORDER BY (SUM(CASE WHEN e.event_type LIKE '%_start' THEN 1 ELSE 0 END)) DESC
+                LIMIT ? OFFSET ?
+            )
             SELECT
-                project,
-                issue_number,
-                MIN(created_at)                                                    AS first_event,
-                MAX(created_at)                                                    AS last_event,
-                SUM(CASE WHEN event_type LIKE '%_start'   THEN 1 ELSE 0 END)      AS actual_runs,
-                SUM(CASE WHEN event_type = 'po_start'     THEN 1 ELSE 0 END)      AS po_runs,
-                SUM(CASE WHEN event_type = 'po_failed'    THEN 1 ELSE 0 END)      AS po_failed,
-                SUM(CASE WHEN event_type = 'dev_start'    THEN 1 ELSE 0 END)      AS dev_runs,
-                SUM(CASE WHEN event_type = 'dev_failed'   THEN 1 ELSE 0 END)      AS dev_failed,
-                SUM(CASE WHEN event_type = 'review_start' THEN 1 ELSE 0 END)      AS review_runs,
-                SUM(CASE WHEN event_type = 'review_failed' THEN 1 ELSE 0 END)     AS review_failed,
-                SUM(CASE WHEN event_type = 'qa_start'     THEN 1 ELSE 0 END)      AS qa_runs,
-                SUM(CASE WHEN event_type = 'qa_failed'    THEN 1 ELSE 0 END)      AS qa_failed,
-                SUM(CASE WHEN event_type = 'merge_start'  THEN 1 ELSE 0 END)      AS merge_runs,
-                SUM(CASE WHEN event_type = 'merge_failed' THEN 1 ELSE 0 END)      AS merge_failed
-            FROM events
-            WHERE issue_number IS NOT NULL
-              AND created_at >= ?
-              AND (? IS NULL OR project = ?)
-            GROUP BY project, issue_number
-            HAVING actual_runs > 0
-            ORDER BY actual_runs DESC
-            LIMIT ? OFFSET ?
-        )
-        SELECT
-            a.*,
-            (
-                SELECT COUNT(*)
-                FROM verdicts v
-                WHERE v.project = a.project
-                  AND v.created_at BETWEEN a.first_event AND a.last_event
-            ) AS verdict_count,
-            (
-                SELECT COALESCE(SUM(v.points), 0)
-                FROM verdicts v
-                WHERE v.project = a.project
-                  AND v.created_at BETWEEN a.first_event AND a.last_event
-            ) AS total_points
-        FROM agg a
-        """,
-        (since_iso, project_param, project_param, limit, offset),
-    ).fetchall()
+                a.*,
+                (
+                    SELECT COUNT(*)
+                    FROM verdicts v
+                    WHERE v.project = a.project
+                      AND v.created_at BETWEEN a.first_event AND a.last_event
+                ) AS verdict_count,
+                (
+                    SELECT COALESCE(SUM(v.points), 0)
+                    FROM verdicts v
+                    WHERE v.project = a.project
+                      AND v.created_at BETWEEN a.first_event AND a.last_event
+                ) AS total_points
+            FROM agg a
+            """,
+            params_day,
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            WITH agg AS (
+                SELECT
+                    project,
+                    issue_number,
+                    MIN(created_at)                                                    AS first_event,
+                    MAX(created_at)                                                    AS last_event,
+                    SUM(CASE WHEN event_type LIKE '%_start'   THEN 1 ELSE 0 END)      AS actual_runs,
+                    SUM(CASE WHEN event_type = 'po_start'     THEN 1 ELSE 0 END)      AS po_runs,
+                    SUM(CASE WHEN event_type = 'po_failed'    THEN 1 ELSE 0 END)      AS po_failed,
+                    SUM(CASE WHEN event_type = 'dev_start'    THEN 1 ELSE 0 END)      AS dev_runs,
+                    SUM(CASE WHEN event_type = 'dev_failed'   THEN 1 ELSE 0 END)      AS dev_failed,
+                    SUM(CASE WHEN event_type = 'review_start' THEN 1 ELSE 0 END)      AS review_runs,
+                    SUM(CASE WHEN event_type = 'review_failed' THEN 1 ELSE 0 END)     AS review_failed,
+                    SUM(CASE WHEN event_type = 'qa_start'     THEN 1 ELSE 0 END)      AS qa_runs,
+                    SUM(CASE WHEN event_type = 'qa_failed'    THEN 1 ELSE 0 END)      AS qa_failed,
+                    SUM(CASE WHEN event_type = 'merge_start'  THEN 1 ELSE 0 END)      AS merge_runs,
+                    SUM(CASE WHEN event_type = 'merge_failed' THEN 1 ELSE 0 END)      AS merge_failed
+                FROM events
+                WHERE issue_number IS NOT NULL
+                  AND created_at >= ?
+                  AND (? IS NULL OR project = ?)
+                GROUP BY project, issue_number
+                HAVING actual_runs > 0
+                ORDER BY actual_runs DESC
+                LIMIT ? OFFSET ?
+            )
+            SELECT
+                a.*,
+                (
+                    SELECT COUNT(*)
+                    FROM verdicts v
+                    WHERE v.project = a.project
+                      AND v.created_at BETWEEN a.first_event AND a.last_event
+                ) AS verdict_count,
+                (
+                    SELECT COALESCE(SUM(v.points), 0)
+                    FROM verdicts v
+                    WHERE v.project = a.project
+                      AND v.created_at BETWEEN a.first_event AND a.last_event
+                ) AS total_points
+            FROM agg a
+            """,
+            (since_iso, project_param, project_param, limit, offset),
+        ).fetchall()
 
     now_ts = datetime.now(timezone.utc).timestamp()
     result = []
@@ -354,3 +423,85 @@ def get_cost_trend(
         "trend": trend,
         "buckets": buckets,
     }
+
+
+@router.get("/api/cost/timeseries")
+def get_cost_timeseries(
+    days: int = 30,
+    project: Optional[str] = None,
+    priority: Optional[str] = None,
+    conn: sqlite3.Connection = Depends(db_dep),
+) -> dict[str, Any]:
+    since_dt = datetime.now(timezone.utc) - timedelta(days=days)
+    since_iso = since_dt.isoformat()
+
+    rework_types_ph = ",".join("?" * len(_REWORK_EVENT_TYPES))
+
+    # Single query: per-day per-issue rework event counts by stage
+    issue_rows = conn.execute(
+        f"""
+        SELECT
+            date(created_at)                                                          AS day,
+            project,
+            issue_number,
+            SUM(CASE WHEN event_type = 'po_failed'                         THEN 1 ELSE 0 END) AS po_failed,
+            SUM(CASE WHEN event_type IN ('dev_failed', 'dev_rework')        THEN 1 ELSE 0 END) AS dev_rework,
+            SUM(CASE WHEN event_type = 'qa_failed'                         THEN 1 ELSE 0 END) AS qa_fail,
+            SUM(CASE WHEN event_type = 'review_failed'                     THEN 1 ELSE 0 END) AS review_reject,
+            COUNT(*)                                                                AS rework_events
+        FROM events
+        WHERE issue_number IS NOT NULL
+          AND created_at >= ?
+          AND (? IS NULL OR project = ?)
+          AND event_type IN ({rework_types_ph})
+        GROUP BY day, project, issue_number
+        ORDER BY day, rework_events DESC
+        """,
+        (since_iso, project, project, *_REWORK_EVENT_TYPES),
+    ).fetchall()
+
+    # Apply priority filter if requested
+    if priority:
+        unique_issues = {(r["project"], r["issue_number"]) for r in issue_rows}
+        allowed: set[tuple[str, int]] = set()
+        for proj, iss in unique_issues:
+            meta = _fetch_gh_meta(proj, iss)
+            if meta.get("priority") == priority:
+                allowed.add((proj, iss))
+        issue_rows = [r for r in issue_rows if (r["project"], r["issue_number"]) in allowed]
+
+    # Aggregate per-day totals and build top_issues
+    day_stage: dict[str, dict[str, int]] = {}
+    day_issues: dict[str, list[dict[str, Any]]] = {}
+    for row in issue_rows:
+        d: str = row["day"]
+        if d not in day_stage:
+            day_stage[d] = {"po_failed": 0, "dev_rework": 0, "qa_fail": 0, "review_reject": 0}
+            day_issues[d] = []
+        day_stage[d]["po_failed"]     += row["po_failed"]
+        day_stage[d]["dev_rework"]    += row["dev_rework"]
+        day_stage[d]["qa_fail"]       += row["qa_fail"]
+        day_stage[d]["review_reject"] += row["review_reject"]
+        day_issues[d].append({
+            "project": row["project"],
+            "issue_number": row["issue_number"],
+            "rework_events": row["rework_events"],
+        })
+
+    today_dt = datetime.now(timezone.utc).date()
+    all_days = [(today_dt - timedelta(days=i)).isoformat() for i in range(days - 1, -1, -1)]
+
+    buckets: list[dict[str, Any]] = []
+    for d in all_days:
+        stage = day_stage.get(d, {"po_failed": 0, "dev_rework": 0, "qa_fail": 0, "review_reject": 0})
+        total = stage["po_failed"] + stage["dev_rework"] + stage["qa_fail"] + stage["review_reject"]
+        # issues already sorted by rework_events DESC from SQL
+        top = day_issues.get(d, [])[:3]
+        buckets.append({
+            "date": d,
+            "total_rework_events": total,
+            "by_stage": stage,
+            "top_issues": top,
+        })
+
+    return {"window_days": days, "buckets": buckets}
