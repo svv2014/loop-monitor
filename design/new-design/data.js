@@ -3,19 +3,19 @@
 //   events: dev_start, dev_done, po_start, po_done, qa_pass, qa_fail,
 //           review_done, merge_done, judge_done
 //   roles: po, dev, qa, reviewer, merge, judge
+//
+// Project names and worker assignments are loaded from a sibling payload
+// script (data.sample.js — committed, generic; or data.local.js — gitignored)
+// which sets window.PipelineDataPayload. Load order is enforced by the
+// <script> tags in Pipeline Monitor.html.
 
 (function () {
-  const PROJECTS = [
-    { id: 'loop',           color: 'po' },
-    { id: 'loop-monitor',   color: 'dev' },
-    { id: 'boba-event',     color: 'qa' },
-    { id: 'boba-orchestrator', color: 'reviewer' },
-    { id: 'ntc',            color: 'merge' },
-    { id: 'pa-scanner',     color: 'judge' },
-    { id: 'ppl',            color: 'dev' },
-    { id: 'suprun',         color: 'po' },
-    { id: 'vrefm-classifier', color: 'qa' },
-  ];
+  const payload = window.PipelineDataPayload;
+  if (!payload) {
+    throw new Error('PipelineDataPayload missing — load data.sample.js (or data.local.js) before data.js');
+  }
+
+  const PROJECTS = payload.projects;
 
   const ROLES = ['po', 'dev', 'qa', 'reviewer', 'merge', 'judge'];
 
@@ -87,13 +87,18 @@
   }
 
   // Workers — agents currently busy (simulated)
-  const WORKERS_INITIAL = [
-    { id: 'w1', name: 'sonnet-4-6',  agent: 'claude',  model: 'sonnet-4-6',  role: 'dev',      project: 'loop',           task: '#142 implement retry backoff', startedAt: Date.now() - 124_000, status: 'busy' },
-    { id: 'w2', name: 'opus-4-1',    agent: 'claude',  model: 'opus-4-1',    role: 'reviewer', project: 'loop-monitor',   task: '#138 review PR diff',          startedAt: Date.now() - 47_000,  status: 'busy' },
-    { id: 'w3', name: 'gpt-5',       agent: 'gpt',     model: 'gpt-5',       role: 'po',       project: 'ppl',            task: '#150 spec breakdown',          startedAt: Date.now() - 12_000,  status: 'busy' },
-    { id: 'w4', name: 'haiku-4-5',   agent: 'claude',  model: 'haiku-4-5',   role: 'qa',       project: 'vrefm-classifier', task: '#101 run regression suite',  startedAt: Date.now() - 8_000,   status: 'busy' },
-    { id: 'w5', name: 'gemini-2-5',  agent: 'gemini',  model: 'gemini-2-5',  role: 'judge',    project: 'boba-event',     task: '#88 verdict scoring',          startedAt: Date.now() - 2_300,   status: 'busy' },
-  ];
+  const _now = Date.now();
+  const WORKERS_INITIAL = payload.workers.map((w) => ({
+    id: w.id,
+    name: w.name,
+    agent: w.agent,
+    model: w.model,
+    role: w.role,
+    project: w.project,
+    task: w.task,
+    startedAt: _now - w.ageMs,
+    status: 'busy',
+  }));
 
   // Aggregate helpers
   function buildLeaderboard(events, by = 'role') {
@@ -162,18 +167,7 @@
         project: p.id,
         role,
         issue_num: randInt(20, 200),
-        title: pick([
-          'rate-limit handler exceeds budget',
-          'flaky test in pipeline_runs',
-          'spec drift on /api/report v1.2',
-          'judge gives low verdict on small diffs',
-          'memory leak in event ingest loop',
-          'queue starvation under burst load',
-          'webhook timeout retries unbounded',
-          'leaderboard ranks tied agents wrong',
-          'duplicate events from boba-orchestrator',
-          'missing duration on judge_done',
-        ]),
+        title: pick(payload.queueTitles),
         priority: pick(PRIORITIES),
         waiting_ms: randInt(60_000, 6 * 60 * 60 * 1000),
         attempts: randInt(0, 2),

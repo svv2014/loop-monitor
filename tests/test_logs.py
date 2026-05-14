@@ -29,18 +29,18 @@ def test_literal_filter_matches(monkeypatch, tmp_path):
     _patch_logdir(monkeypatch, tmp_path)
     log = tmp_path / "loop-scanner.log"
     log.write_text(
-        "[2026-05-02 10:00:00] [scanner] hello pa-scanner\n"
+        "[2026-05-02 10:00:00] [scanner] hello project_c\n"
         "[2026-05-02 10:00:01] [scanner] unrelated event\n"
-        "[2026-05-02 10:00:02] [scanner] another pa-scanner line\n"
+        "[2026-05-02 10:00:02] [scanner] another project_c line\n"
     )
     with patch.object(logs_module, "_fd_bytes_for_handler", return_value=None):
         resp = client.get(
-            "/api/logs", params={"handler": "scanner", "filter": "pa-scanner", "tail": "200"}
+            "/api/logs", params={"handler": "scanner", "filter": "project_c", "tail": "200"}
         )
     assert resp.status_code == 200
     body = resp.json()
     assert len(body["lines"]) == 2
-    assert all("pa-scanner" in line["raw"] for line in body["lines"])
+    assert all("project_c" in line["raw"] for line in body["lines"])
     assert body["lines"][0]["ts"] == "2026-05-02 10:00:00"
     assert body["lines"][0]["handler"] == "scanner"
 

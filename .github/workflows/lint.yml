@@ -26,6 +26,9 @@ jobs:
       - name: pyright
         run: pyright server/
 
+      - name: No operator-specific names leak into tracked files
+        run: python scripts/check-no-operator-leaks.py
+
   web:
     runs-on: ubuntu-latest
     defaults:

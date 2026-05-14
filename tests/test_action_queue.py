@@ -13,16 +13,18 @@ def test_action_queue_empty(isolated_client):
     assert resp.json() == []
 
 
-def test_action_queue_blocked_label(isolated_client):
+def test_action_queue_blocked_label(isolated_client, monkeypatch):
+    from server.routes import action_queue as aq_module
+    monkeypatch.setitem(aq_module.PROJECTS, "project_a", "example-org/project-a")
     server._insert_event(server.ReportPayload(
-        project="boba-event", role="dev", event_type="blocked", issue_number=42,
+        project="project_a", role="dev", event_type="blocked", issue_number=42,
         detail="needs human"
     ))
     resp = isolated_client.get("/api/action_queue")
     assert resp.status_code == 200
     data = resp.json()
     assert len(data) == 1
-    assert data[0]["project"] == "boba-event"
+    assert data[0]["project"] == "project_a"
     assert data[0]["kind"] == "issue"
     assert data[0]["number"] == 42
     assert data[0]["stage"] == "blocked"
@@ -259,12 +261,12 @@ def test_infer_label_transition_loop_active_dev_timeout(isolated_client, monkeyp
 # ── Failure-context endpoint ──────────────────────────────────────────────────
 
 _COMMENT_WITH_MARKER = json.dumps({
-    "excerpt": "ModuleNotFoundError: No module named 'boba_orchestrator'",
+    "excerpt": "ModuleNotFoundError: No module named 'project_b'",
     "model": "claude-opus-4-5",
     "run_id": "run-abc123",
     "retry_count": 2,
     "timestamp": "2026-05-02T14:30:00Z",
-    "log_path": "/var/log/loop/boba-orchestrator.log",
+    "log_path": "/var/log/loop/project-b.log",
 })
 
 _GH_COMMENT_BODY = (
@@ -315,12 +317,12 @@ def test_failure_endpoint_with_marker(isolated_client, monkeypatch):
 
     assert resp.status_code == 200
     data = resp.json()
-    assert data["excerpt"] == "ModuleNotFoundError: No module named 'boba_orchestrator'"
+    assert data["excerpt"] == "ModuleNotFoundError: No module named 'project_b'"
     assert data["model"] == "claude-opus-4-5"
     assert data["run_id"] == "run-abc123"
     assert data["retry_count"] == 2
     assert data["timestamp"] == "2026-05-02T14:30:00Z"
-    assert data["log_path"] == "/var/log/loop/boba-orchestrator.log"
+    assert data["log_path"] == "/var/log/loop/project-b.log"
     assert data["github_comment_url"] == "https://gh/c/2"
 
 

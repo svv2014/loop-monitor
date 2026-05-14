@@ -14,7 +14,12 @@ import pathlib
 import pytest
 
 REFERENCE_DIR = pathlib.Path(__file__).parents[2] / "design" / "reference-screenshots"
-FIXTURE_PROJECT = os.getenv("LM_FIXTURE_PROJECT", "svv2014/loop-monitor")
+FIXTURE_PROJECT = os.getenv("LM_FIXTURE_PROJECT")
+if not FIXTURE_PROJECT:
+    pytest.skip(
+        "LM_FIXTURE_PROJECT is not set — skipping operator-specific visual snapshots",
+        allow_module_level=True,
+    )
 DIFF_THRESHOLD = 0.005  # 0.5 %
 
 

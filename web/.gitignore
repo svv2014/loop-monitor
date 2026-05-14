@@ -1,0 +1,4 @@
+# Local fixture override — operators drop a customised payload here to render
+# screenshots / Storybook with private project names without modifying the
+# repo. See web/public/fixtures.sample.json for the schema.
+public/fixtures.local.json

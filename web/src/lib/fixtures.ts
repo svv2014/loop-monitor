@@ -1,6 +1,12 @@
 // Deterministic fixture data ported verbatim from design/new-design/data.js.
 // Same LCG seed (0xC0FFEE) and constants ensure byte-identical output across
 // runs — required by the Phase 0 visual-diff harness.
+//
+// Operator-specific project names are not baked into this file. The fixture
+// payload is loaded at module-init time from /fixtures.local.json (preferred,
+// gitignored) or /fixtures.sample.json (committed, generic placeholder data).
+// Operators can drop a fixtures.local.json into web/public/ to customise the
+// screenshot/Storybook data without touching the repo.
 import type {
   Worker,
   BoardEntry,
@@ -22,20 +28,69 @@ import type {
   IssueCostRow,
 } from './types';
 
-// Fixture data — example projects used for screenshots / Storybook / tests.
-// Not the runtime registry. The runtime project list comes from the server's
-// /api/* endpoints, populated from config/projects.yaml.
-const PROJECTS = [
-  { id: 'web-app',         repo: 'example-org/web-app' },
-  { id: 'api-server',      repo: 'example-org/api-server' },
-  { id: 'cli-tool',        repo: 'example-org/cli-tool' },
-  { id: 'docs-site',       repo: 'example-org/docs-site' },
-  { id: 'ml-pipeline',     repo: 'example-org/ml-pipeline' },
-  { id: 'mobile-app',      repo: 'example-org/mobile-app' },
-  { id: 'data-scraper',    repo: 'example-org/data-scraper' },
-  { id: 'analytics',       repo: 'example-org/analytics' },
-  { id: 'auth-service',    repo: 'example-org/auth-service' },
-] as const;
+interface FixtureProject { id: string; repo: string; color?: string }
+interface FixtureWorkerInit {
+  project: string;
+  role: string;
+  model: string;
+  event_type: string;
+  issue_number: number;
+  pr_number: number | null;
+  detail: string;
+  age_seconds: number;
+}
+interface FixturePayload {
+  projects: FixtureProject[];
+  workers: FixtureWorkerInit[];
+  queueTitles: string[];
+}
+
+// Embedded fallback — used when fetch() is unavailable (e.g. node/test envs)
+// or when neither fixtures.local.json nor fixtures.sample.json can be loaded.
+// Kept in sync with web/public/fixtures.sample.json.
+const FALLBACK_PAYLOAD: FixturePayload = {
+  projects: [
+    { id: 'project-a', repo: 'example-org/project-a', color: 'po' },
+    { id: 'project-b', repo: 'example-org/project-b', color: 'dev' },
+    { id: 'project-c', repo: 'example-org/project-c', color: 'qa' },
+    { id: 'project-d', repo: 'example-org/project-d', color: 'reviewer' },
+  ],
+  workers: [
+    { project: 'project-a', role: 'dev',      model: 'sonnet-4-6', event_type: 'dev_start',    issue_number: 142, pr_number: null, detail: '#142 implement retry backoff', age_seconds: 124 },
+    { project: 'project-b', role: 'reviewer', model: 'opus-4-1',   event_type: 'review_start', issue_number: 138, pr_number: 138,  detail: '#138 review PR diff',          age_seconds: 47 },
+    { project: 'project-c', role: 'po',       model: 'gpt-5',      event_type: 'po_start',     issue_number: 150, pr_number: null, detail: '#150 spec breakdown',          age_seconds: 12 },
+    { project: 'project-d', role: 'qa',       model: 'haiku-4-5',  event_type: 'qa_start',     issue_number: 101, pr_number: null, detail: '#101 run regression suite',    age_seconds: 8 },
+    { project: 'project-a', role: 'judge',    model: 'gemini-2-5', event_type: 'judge_start',  issue_number: 88,  pr_number: null, detail: '#88 verdict scoring',          age_seconds: 2 },
+  ],
+  queueTitles: [
+    'rate-limit handler exceeds budget',
+    'flaky test in pipeline_runs',
+    'spec drift on /api/report v1.2',
+    'judge gives low verdict on small diffs',
+    'memory leak in event ingest loop',
+    'queue starvation under burst load',
+    'webhook timeout retries unbounded',
+    'leaderboard ranks tied agents wrong',
+    'duplicate events from project-b',
+    'missing duration on judge_done',
+  ],
+};
+
+async function loadPayload(): Promise<FixturePayload> {
+  if (typeof fetch !== 'function') return FALLBACK_PAYLOAD;
+  for (const url of ['/fixtures.local.json', '/fixtures.sample.json']) {
+    try {
+      const r = await fetch(url);
+      if (r.ok) return (await r.json()) as FixturePayload;
+    } catch {
+      // ignore and try next
+    }
+  }
+  return FALLBACK_PAYLOAD;
+}
+
+const PAYLOAD: FixturePayload = await loadPayload();
+const PROJECTS: readonly FixtureProject[] = PAYLOAD.projects;
 
 const ROLES = ['po', 'dev', 'qa', 'reviewer', 'merge', 'judge'] as const;
 
@@ -114,13 +169,16 @@ function buildHistory(): RawEvent[] {
 resetSeed();
 const HISTORY = buildHistory();
 
-const WORKERS_INITIAL: Worker[] = [
-  { project: 'loop',             role: 'dev',      model: 'sonnet-4-6', event_type: 'dev_start',    issue_number: 142, pr_number: null, detail: '#142 implement retry backoff', created_at: new Date(Date.now() - 124_000).toISOString() },
-  { project: 'loop-monitor',     role: 'reviewer', model: 'opus-4-1',   event_type: 'review_start',  issue_number: 138, pr_number: 138,  detail: '#138 review PR diff',          created_at: new Date(Date.now() - 47_000).toISOString() },
-  { project: 'ppl',              role: 'po',       model: 'gpt-5',      event_type: 'po_start',      issue_number: 150, pr_number: null, detail: '#150 spec breakdown',          created_at: new Date(Date.now() - 12_000).toISOString() },
-  { project: 'vrefm-classifier', role: 'qa',       model: 'haiku-4-5',  event_type: 'qa_start',      issue_number: 101, pr_number: null, detail: '#101 run regression suite',    created_at: new Date(Date.now() - 8_000).toISOString() },
-  { project: 'boba-event',       role: 'judge',    model: 'gemini-2-5', event_type: 'judge_start',   issue_number: 88,  pr_number: null, detail: '#88 verdict scoring',          created_at: new Date(Date.now() - 2_300).toISOString() },
-];
+const WORKERS_INITIAL: Worker[] = PAYLOAD.workers.map((w) => ({
+  project: w.project,
+  role: w.role,
+  model: w.model,
+  event_type: w.event_type,
+  issue_number: w.issue_number,
+  pr_number: w.pr_number,
+  detail: w.detail,
+  created_at: new Date(Date.now() - w.age_seconds * 1000).toISOString(),
+}));
 
 export function getFixtureActive(): Worker[] {
   return WORKERS_INITIAL;
@@ -217,18 +275,7 @@ const QUEUE_REASONS = ['stuck_label', 'timeout', 'qa_fail_repeated'] as const;
 
 export function getFixtureActionQueue(): QueueItem[] {
   resetSeed();
-  const TITLES = [
-    'rate-limit handler exceeds budget',
-    'flaky test in pipeline_runs',
-    'spec drift on /api/report v1.2',
-    'judge gives low verdict on small diffs',
-    'memory leak in event ingest loop',
-    'queue starvation under burst load',
-    'webhook timeout retries unbounded',
-    'leaderboard ranks tied agents wrong',
-    'duplicate events from boba-orchestrator',
-    'missing duration on judge_done',
-  ] as const;
+  const TITLES = PAYLOAD.queueTitles;
   return Array.from({ length: 18 }, (_, i) => {
     const p = pick(PROJECTS);
     return {
@@ -374,8 +421,8 @@ export function getFixtureScannerState(): ScannerState {
       merge:    { in_flight: 0, cap: 2 },
     },
     retries: [
-      { project: 'loop-monitor', kind: 'issue', number: 137, stage: 'po',  count: 1, max: 2 },
-      { project: 'loop',         kind: 'issue', number: 142, stage: 'dev', count: 2, max: 2 },
+      { project: 'project-b', kind: 'issue', number: 137, stage: 'po',  count: 1, max: 2 },
+      { project: 'project-a', kind: 'issue', number: 142, stage: 'dev', count: 2, max: 2 },
     ],
   };
 }

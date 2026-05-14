@@ -169,6 +169,32 @@ is baked into every payload.
 - Any removal or rename of an existing field is a **major API version**
   bump and requires updating the spec in Loop core first.
 
+## Fixture data
+
+Visual harnesses (Storybook, the design prototype, the React app under
+`?fixtures=1`) read from a committed sample file:
+
+- `web/public/fixtures.sample.json` — payload for the React app
+  (`web/src/lib/fixtures.ts` fetches it at module init).
+- `design/new-design/data.sample.js` — payload for the legacy prototype
+  (`design/new-design/data.js` consumes `window.PipelineDataPayload`).
+
+Both files use generic placeholder identifiers (`project-a`, `project-b`,
+…). **Never commit real operator project names back into these files.**
+A CI check (`scripts/check-no-operator-leaks.py`) enforces this by
+grepping the tracked tree against `scripts/.operator-names.local.txt`
+(gitignored — populate locally or via CI secret to activate).
+
+To run the dashboards with your own project names, drop a gitignored
+override beside the sample:
+
+- `web/public/fixtures.local.json` — same schema as the sample; loaded
+  preferentially when present.
+- `design/new-design/data.local.js` — same shape as `data.sample.js`.
+
+Python tests under `tests/` follow the same convention: use
+`project_a`, `project_b`, … (underscores ok in Python).
+
 ## Reporting issues
 
 - Use [GitHub Security Advisories](https://github.com/svv2014/loop-monitor/security/advisories/new)

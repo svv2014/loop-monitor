@@ -5,7 +5,7 @@
 # Example launchd key: <key>StartInterval</key><integer>3600</integer>
 set -euo pipefail
 
-LOOP_ROOT="${LOOP_ROOT:-/Users/vadim/.openclaw/workspace/projects/loop}"
+LOOP_ROOT="${LOOP_ROOT:-$(cd "$(dirname "$0")/../../loop" 2>/dev/null && pwd)}"
 LOOP_ENV="$LOOP_ROOT/loop.env"
 [[ -f "$LOOP_ENV" ]] && source "$LOOP_ENV"
 
