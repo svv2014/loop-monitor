@@ -274,6 +274,53 @@ export interface IssueCostRow {
   github_url: string | null;
 }
 
+export interface QualityVerdicts {
+  clean: number;
+  light_rework: number;
+  heavy_rework: number;
+  blocked: number;
+}
+
+export interface QualityStageFailure {
+  stage: string;
+  fail_rate: number;
+  sample: number;
+}
+
+export interface QualityReworkBucket {
+  label: string;
+  count: number;
+}
+
+export interface QualityReworkDist {
+  p50: number | null;
+  p75: number | null;
+  p95: number | null;
+  buckets: QualityReworkBucket[];
+}
+
+export interface QualityFailureTypes {
+  po_failed: number;
+  dev_failed: number;
+  qa_fail: number;
+  review_failed: number;
+  merge_failed: number;
+}
+
+export interface QualityDailyRate {
+  date: string;
+  rate: number | null;
+}
+
+export interface QualityAnalyticsResponse {
+  verdicts: QualityVerdicts;
+  qa_pass_rate: number | null;
+  qa_pass_rate_daily: QualityDailyRate[];
+  stage_failure: QualityStageFailure[];
+  rework_dist: QualityReworkDist;
+  failure_types: QualityFailureTypes;
+}
+
 export interface CostTrendBucket {
   date: string;
   median_rework_factor: number | null;
