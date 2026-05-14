@@ -19,6 +19,7 @@ completes.
 ### Changed
 - [LM-115] Phase 2 · API client, transforms, fixture mode (#151)
 - [LM-126] fix db connection leak — add db_dep() FastAPI dependency + try/finally for bg tasks (#189)
+- [LM-123] **BREAKING** React/Vite build (static/dist) is now mounted at `/`; legacy `/v2` mount removed. Run `cd web && npm run build` before starting the server. Legacy vanilla-JS dashboard (static/index.html, static/js/**, static/css/style.css) deleted.
 
 ## [0.2.1] - 2026-05-09
 

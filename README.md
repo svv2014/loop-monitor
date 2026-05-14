@@ -41,6 +41,7 @@ loop-monitor renders any pipeline that emits the simple [bounty event API](#api)
 git clone https://github.com/svv2014/loop-monitor.git
 cd loop-monitor
 pip install -r requirements.txt
+cd web && npm run build && cd ..
 cp config/projects.yaml.example config/projects.yaml   # then edit
 ./run.sh
 ```
@@ -246,6 +247,7 @@ loop-monitor is **operator-driven** — currently developed by an autonomous pip
 
 ```bash
 pip install -r requirements.txt
+cd web && npm run build && cd ..
 uvicorn server.app:app --host 127.0.0.1 --port 18792 --reload
 pytest tests/
 ```
