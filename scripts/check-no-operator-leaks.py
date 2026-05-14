@@ -10,7 +10,6 @@ CHANGELOG.md is exempt (historical references are allowed to stand).
 """
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -46,7 +45,10 @@ def tracked_files() -> list[str]:
 def main() -> int:
     names = load_names()
     if not names:
-        print("check-no-operator-leaks: no names configured (scripts/.operator-names.local.txt empty or missing) — skipping")
+        print(
+            "check-no-operator-leaks: no names configured "
+            "(scripts/.operator-names.local.txt empty or missing) — skipping"
+        )
         return 0
 
     files = tracked_files()
