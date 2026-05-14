@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import Logo from './components/Logo';
 import NavRail from './components/NavRail';
 import TopBar from './components/TopBar';
+import StaleBanner from './components/StaleBanner';
 import Overview from './screens/Overview';
 import Logs from './screens/Logs';
 import ProjectDetail from './screens/ProjectDetail';
@@ -103,11 +104,19 @@ export default function App() {
   }));
   const online = !activeQuery.isError;
   const version = healthQuery.data?.monitor_version ?? '…';
+  const runningSha = healthQuery.data?.git_sha ?? null;
+  const latestSha = healthQuery.data?.latest_main_sha ?? null;
+  const isStale =
+    runningSha != null &&
+    latestSha != null &&
+    runningSha !== 'unknown' &&
+    latestSha !== runningSha;
 
   return (
     <div className="app">
       <Logo />
       <TopBar events={events} online={online} version={version} />
+      {isStale && <StaleBanner runningSha={runningSha!} latestSha={latestSha!} />}
       <NavRail screen={isProjectDetail ? 'projects' : navScreen} setScreen={handleNavChange} />
       <main className="main">
         {showCost ? (

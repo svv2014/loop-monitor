@@ -1,5 +1,7 @@
 import sqlite3
 import subprocess
+import threading
+import time
 from pathlib import Path
 
 from fastapi import APIRouter, Depends
@@ -10,6 +12,11 @@ from server.db import db_dep
 router = APIRouter()
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+
+_lms_lock = threading.Lock()
+_lms_sha: str | None = None
+_lms_at: float = 0.0
+_LMS_TTL = 60.0
 
 
 def _git_sha() -> str:
@@ -29,6 +36,28 @@ def _git_sha() -> str:
     return sha or "unknown"
 
 
+def _latest_main_sha() -> str | None:
+    global _lms_sha, _lms_at
+    with _lms_lock:
+        if time.monotonic() - _lms_at < _LMS_TTL:
+            return _lms_sha
+    try:
+        result = subprocess.run(
+            ["git", "ls-remote", "https://github.com/svv2014/loop-monitor.git", "refs/heads/main"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        line = result.stdout.strip()
+        sha = line.split()[0][:7] if result.returncode == 0 and line else None
+    except Exception:
+        sha = None
+    with _lms_lock:
+        _lms_sha = sha
+        _lms_at = time.monotonic()
+    return sha
+
+
 @router.get("/api/health")
 def health(conn: sqlite3.Connection = Depends(db_dep)):
     rows = conn.execute(
@@ -43,6 +72,7 @@ def health(conn: sqlite3.Connection = Depends(db_dep)):
         "status": "ok",
         "monitor_version": MONITOR_VERSION,
         "git_sha": _git_sha(),
+        "latest_main_sha": _latest_main_sha(),
         "supported_bounty_api": f"{SUPPORTED_API_MAJOR}.x",
         "core_version_counts": core_version_counts,
         "loop_ids": loop_ids,

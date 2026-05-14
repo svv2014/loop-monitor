@@ -47,6 +47,35 @@ cp config/projects.yaml.example config/projects.yaml   # then edit
 
 Open http://127.0.0.1:18792.
 
+## Running as a macOS LaunchAgent (dedicated checkout)
+
+For production use, run the service from a dedicated clone so the autonomous
+pipeline's working tree never affects the running dashboard.
+
+### One-time bootstrap
+
+```bash
+git clone https://github.com/svv2014/loop-monitor.git \
+    ~/.openclaw/workspace/services/loop-monitor
+cd ~/.openclaw/workspace/services/loop-monitor
+pip install -r requirements.txt
+cd web && npm ci && npm run build && cd ..
+cp scripts/com.user.loop-watch.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.user.loop-watch.plist
+```
+
+### Updating the service
+
+Run `scripts/redeploy.sh` from the **services** checkout to pull latest main,
+rebuild the frontend, and restart the LaunchAgent:
+
+```bash
+bash ~/.openclaw/workspace/services/loop-monitor/scripts/redeploy.sh
+```
+
+The dashboard shows a warning banner when the running commit differs from the
+latest `main` commit. Dismiss the banner after redeploying.
+
 ## Bring your own pipeline
 
 loop-monitor is wire-compatible with any system that can POST a small JSON payload per stage transition. Three configuration files cover the common reuse cases:

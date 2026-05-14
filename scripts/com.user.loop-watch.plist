@@ -4,6 +4,10 @@
   Install:  cp scripts/com.user.loop-watch.plist ~/Library/LaunchAgents/
             launchctl load ~/Library/LaunchAgents/com.user.loop-watch.plist
   Disable:  launchctl unload ~/Library/LaunchAgents/com.user.loop-watch.plist
+  Redeploy: bash ~/.openclaw/workspace/services/loop-monitor/scripts/redeploy.sh
+  Bootstrap (one-time):
+            git clone https://github.com/svv2014/loop-monitor.git \
+                ~/.openclaw/workspace/services/loop-monitor
 -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -11,9 +15,12 @@
     <key>Label</key>
     <string>com.user.loop-watch</string>
 
+    <key>WorkingDirectory</key>
+    <string>/Users/vadim/.openclaw/workspace/services/loop-monitor</string>
+
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/vadim/.openclaw/workspace/projects/loop-monitor/scripts/loop-watch.sh</string>
+        <string>/Users/vadim/.openclaw/workspace/services/loop-monitor/scripts/loop-watch.sh</string>
     </array>
 
     <key>StartInterval</key>
