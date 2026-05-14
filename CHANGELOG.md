@@ -10,16 +10,26 @@ its own version (currently `1.0`) baked into every payload.
 
 ## [Unreleased]
 
-The "Dope UI" React migration is in progress on this line — phases 0
-(visual harness), 1 (Vite scaffold), 2 (API client), 3.2 (Queue
-screen), 4.1 (loop selector + version badge) and various reliability
-panels are landed or in flight. v0.3.0 will cut after the migration
-completes.
+## [0.3.0] - 2026-05-14
 
-### Changed
+The "Dope UI" milestone — React/Vite frontend replaces the vanilla-JS
+dashboard. Phase 5 cutover landed (#259): React serves at `/`, the
+`/v2` mount is removed, all `static/index.html` / `static/js/**` /
+`static/css/style.css` deleted. Per-issue cost view (#149), Logs tab
+port to React, drawer + URL hash routing, charts panel and Claude
+Usage all shipped under this milestone. Operators must run
+`cd web && npm run build` before starting the server.
+
+### Changed (BREAKING)
+- [LM-123] React/Vite build (static/dist) is now mounted at `/`; legacy `/v2` mount removed. Vanilla-JS dashboard (static/index.html, static/js/**, static/css/style.css) deleted. (#259)
+- vite.config.ts `base` flipped to `/` to match the new mount. (#262)
+
+### Added
 - [LM-115] Phase 2 · API client, transforms, fixture mode (#151)
+- Dope UI phases 0-4 cumulative: visual regression harness, Vite scaffold, Overview / Action Queue / Project Detail / Worker Detail / Logs / Cost screens, drawer + hash routing, charts panel, Claude Usage, NavRail keyboard shortcuts, version badge.
+
+### Fixed
 - [LM-126] fix db connection leak — add db_dep() FastAPI dependency + try/finally for bg tasks (#189)
-- [LM-123] **BREAKING** React/Vite build (static/dist) is now mounted at `/`; legacy `/v2` mount removed. Run `cd web && npm run build` before starting the server. Legacy vanilla-JS dashboard (static/index.html, static/js/**, static/css/style.css) deleted.
 
 ## [0.2.1] - 2026-05-09
 
