@@ -280,6 +280,23 @@ export interface CostTrendBucket {
   issue_count: number;
 }
 
+export interface TimelineEvent {
+  id: number;
+  ts: string;
+  type: string;
+  payload: Record<string, unknown> | null;
+  project: string;
+  role: string;
+  model: string | null;
+  issue_number: number | null;
+  pr_number: number | null;
+  detail: string | null;
+}
+
+export interface TimelineResponse {
+  events: TimelineEvent[];
+}
+
 export interface CostTrend {
   window_days: number;
   today: {

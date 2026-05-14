@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
-export type Screen = 'overview' | 'queue' | 'projects' | 'workers' | 'project' | 'logs' | 'analytics';
+export type Screen = 'overview' | 'queue' | 'projects' | 'workers' | 'project' | 'logs' | 'analytics' | 'timeline';
 
 export interface HashRoute {
   screen: Screen;
@@ -140,11 +140,15 @@ export function useHashRoute() {
     [route.screen, route.projectId, route.drawer, unknown],
   );
 
+  const rawNum = unknown['num'];
+  const ticketNum = rawNum != null && /^\d+$/.test(rawNum) ? parseInt(rawNum, 10) : null;
+
   return {
     screen: route.screen,
     projectId: route.projectId,
     drawer: route.drawer,
     projectFilter: unknown['project_filter'] ?? null,
+    ticketNum,
     navigateTo,
     setDrawer,
     setProjectFilter,

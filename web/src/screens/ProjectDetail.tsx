@@ -336,11 +336,12 @@ export default function ProjectDetail({ projectId, allProjectIds, onBack, onProj
                   <th style={{ textAlign: 'right' }}>Runs</th>
                   <th>Last</th>
                   <th style={{ textAlign: 'right' }}>Pts</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
                 {issues.length === 0 && (
-                  <tr><td colSpan={5} className="muted" style={{ textAlign: 'center', padding: 'var(--pad-3)' }}>No runs yet</td></tr>
+                  <tr><td colSpan={6} className="muted" style={{ textAlign: 'center', padding: 'var(--pad-3)' }}>No runs yet</td></tr>
                 )}
                 {issues.map(i => (
                   <tr key={i.num}>
@@ -358,6 +359,13 @@ export default function ProjectDetail({ projectId, allProjectIds, onBack, onProj
                       {i.lastAt ? relTime(i.lastAt) : '—'}
                     </td>
                     <td className="num" style={{ textAlign: 'right' }}>{i.pts}</td>
+                    <td>
+                      <a
+                        className="muted mono"
+                        href={`#screen=timeline&project=${encodeURIComponent(projectId)}&num=${i.num}`}
+                        style={{ fontSize: 10, textDecoration: 'none' }}
+                      >timeline →</a>
+                    </td>
                   </tr>
                 ))}
               </tbody>

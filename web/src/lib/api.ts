@@ -26,6 +26,7 @@ import type {
   CycleTimeAnalyticsResponse,
   SloConfig,
   CostTrend,
+  TimelineResponse,
 } from './types';
 import * as fx from './fixtures';
 
@@ -226,6 +227,12 @@ export async function putSlo(project: string, body: { total_seconds: number | nu
 
 export class LogsDisabledError extends Error {
   constructor() { super('Logs are disabled. Set LOOPMON_EXPOSE_LOGS=1 or access via loopback.'); }
+}
+
+export async function fetchTimeline(slug: string, num: number, includeSkips = false): Promise<TimelineResponse> {
+  const p = new URLSearchParams({ slug, num: String(num) });
+  if (includeSkips) p.set('include_skips', 'true');
+  return get<TimelineResponse>(`/api/timeline?${p.toString()}`);
 }
 
 export async function fetchLogs(handler: string, filter: string, tail: string): Promise<LogsResponse> {
