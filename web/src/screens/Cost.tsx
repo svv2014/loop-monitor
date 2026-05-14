@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { fetchIssuesCost } from '../lib/api';
+import { fetchIssuesCost, fetchCostTrend } from '../lib/api';
 import type { IssueCostRow } from '../lib/types';
+import CostTrendStrip from '../components/CostTrendStrip';
 
 const LIMIT = 50;
 
@@ -66,6 +67,17 @@ export default function Cost() {
     staleTime: 0,
   });
 
+  const trendQuery = useQuery({
+    queryKey: ['cost-trend', filterProject, filterPriority],
+    queryFn: () => fetchCostTrend({
+      days: 30,
+      project: filterProject || undefined,
+      priority: filterPriority || undefined,
+    }),
+    refetchInterval: 60_000,
+    staleTime: 0,
+  });
+
   const visible = allRows.filter(r => {
     if (filterProject && r.project !== filterProject) return false;
     if (filterPriority && r.priority !== filterPriority) return false;
@@ -104,6 +116,15 @@ export default function Cost() {
           </div>
         )}
       </div>
+
+      {trendQuery.data && (
+        <CostTrendStrip
+          today={trendQuery.data.today}
+          vs_7d={trendQuery.data.vs_7d}
+          vs_30d={trendQuery.data.vs_30d}
+          buckets={trendQuery.data.buckets}
+        />
+      )}
 
       <div style={{ display: 'flex', gap: 'var(--pad-2)', padding: 'var(--pad-3) var(--pad-4)', borderBottom: '1px solid var(--border)', alignItems: 'center' }}>
         <select

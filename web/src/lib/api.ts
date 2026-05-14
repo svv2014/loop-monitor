@@ -24,6 +24,7 @@ import type {
   FailureContext,
   CycleTimesResponse,
   SloConfig,
+  CostTrend,
 } from './types';
 import * as fx from './fixtures';
 
@@ -168,6 +169,15 @@ export interface IssuesCostParams {
   since?: string;
   limit?: number;
   offset?: number;
+}
+
+export async function fetchCostTrend(params: { days?: number; project?: string; priority?: string } = {}): Promise<CostTrend> {
+  const p = new URLSearchParams();
+  if (params.days != null)    p.set('days', String(params.days));
+  if (params.project)         p.set('project', params.project);
+  if (params.priority)        p.set('priority', params.priority);
+  const qs = p.size ? `?${p.toString()}` : '';
+  return get<CostTrend>(`/api/cost/trend${qs}`);
 }
 
 export async function fetchIssuesCost(params: IssuesCostParams = {}): Promise<IssueCostRow[]> {
