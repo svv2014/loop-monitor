@@ -6,7 +6,6 @@ import server
 import server.db
 from server.routes.feed import _github_url
 
-
 # --- Unit tests for _github_url helper ---
 
 def test_github_url_issue_number():
