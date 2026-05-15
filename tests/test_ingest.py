@@ -221,3 +221,31 @@ def test_concurrent_reports_both_persisted(shared_client):
     feed = shared_client.get("/api/feed").json()
     roles = {e["role"] for e in feed if e["project"] == project}
     assert {"builder", "reviewer"}.issubset(roles)
+
+
+def test_missing_project_returns_422(isolated_client):
+    """POST /api/report without 'project' must be rejected (bug #196)."""
+    resp = isolated_client.post("/api/report", json={
+        "role": "dev",
+        "event_type": "dev_done",
+    })
+    assert resp.status_code == 422
+
+
+def test_missing_role_returns_422(isolated_client):
+    """POST /api/report without 'role' must be rejected (bug #196)."""
+    resp = isolated_client.post("/api/report", json={
+        "project": "p",
+        "event_type": "dev_done",
+    })
+    assert resp.status_code == 422
+
+
+def test_full_payload_returns_202(isolated_client):
+    """POST /api/report with both project and role present succeeds."""
+    resp = isolated_client.post("/api/report", json={
+        "project": "p",
+        "role": "dev",
+        "event_type": "dev_done",
+    })
+    assert resp.status_code == 202
