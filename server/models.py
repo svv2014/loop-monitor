@@ -16,8 +16,8 @@ class ReportPayload(BaseModel):
     core_version: Optional[str] = None
     timestamp: Optional[str] = None
 
-    project: Optional[str] = None
-    role: Optional[str] = None
+    project: str
+    role: str
     model: Optional[str] = None
     event_type: Optional[str] = None
     event: Optional[str] = None        # alias for event_type (v1.0 schema)
