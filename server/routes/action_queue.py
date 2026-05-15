@@ -1,6 +1,9 @@
 import json
+import logging
 import os
 import sqlite3
+import subprocess
+import time
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -10,6 +13,12 @@ from server.constants import PROJECTS
 from server.db import db_dep
 from server.helpers.github import fetch_failure_context
 from server.helpers.timeline import parse_ts
+
+logger = logging.getLogger(__name__)
+
+# Per-project open-set cache: repo -> ({"issue": set|None, "pr": set|None}, expires_at)
+_OPEN_SET_CACHE: dict[str, tuple[dict[str, Optional[set[int]]], float]] = {}
+_OPEN_SET_TTL = 60  # seconds
 
 router = APIRouter()
 
@@ -141,11 +150,61 @@ def _action_queue_reason(
     return None
 
 
+def _fetch_open_numbers(repo: str, kind: str) -> Optional[set[int]]:
+    """Call gh to list open issues or PRs for a repo.
+
+    Returns None when the gh call fails (caller should include items conservatively).
+    Returns a set (possibly empty) when gh succeeds.
+    """
+    entity = "issue" if kind == "issue" else "pr"
+    try:
+        result = subprocess.run(
+            [
+                "gh", entity, "list",
+                "--repo", repo,
+                "--state", "open",
+                "--limit", "1000",
+                "--json", "number",
+                "--jq", "[.[].number]",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except Exception:
+        return None
+    if result.returncode != 0:
+        return None
+    try:
+        return set(json.loads(result.stdout))
+    except (json.JSONDecodeError, ValueError, TypeError):
+        return None
+
+
+def _get_open_set(repo: str) -> dict[str, Optional[set[int]]]:
+    """Return cached open issue/PR numbers for a repo, refreshing after TTL.
+
+    Values are None when the corresponding gh call failed — callers treat None
+    as "unknown" and include the item conservatively.
+    """
+    now = time.monotonic()
+    cached = _OPEN_SET_CACHE.get(repo)
+    if cached and now < cached[1]:
+        return cached[0]
+    open_set: dict[str, Optional[set[int]]] = {
+        "issue": _fetch_open_numbers(repo, "issue"),
+        "pr": _fetch_open_numbers(repo, "pr"),
+    }
+    _OPEN_SET_CACHE[repo] = (open_set, now + _OPEN_SET_TTL)
+    return open_set
+
+
 @router.get("/api/action_queue")
 def action_queue(conn: sqlite3.Connection = Depends(db_dep)):
     """Items across all projects awaiting human input.
 
-    Derived from the latest event per (project, kind, number). No GitHub API call.
+    Derived from the latest event per (project, kind, number), then filtered
+    to only items currently open on GitHub (cached 60 s per project).
     """
     rows = conn.execute(
         """
@@ -214,8 +273,31 @@ def action_queue(conn: sqlite3.Connection = Depends(db_dep)):
             "loop_id": r["loop_id"],
             "github_url": github_url,
         })
-    result.sort(key=lambda x: x["age_seconds"], reverse=True)
-    return result
+    # Filter to only currently-open items on GitHub.
+    # Group candidates by project, fetch open-sets once per project per minute.
+    # When gh call fails (open_numbers is None), include conservatively.
+    before_count = len(result)
+    filtered: list[dict] = []
+    for item in result:
+        repo = PROJECTS.get(item["project"])
+        if repo is None:
+            # No repo mapping — cannot verify state, include conservatively.
+            filtered.append(item)
+            continue
+        open_set = _get_open_set(repo)
+        open_numbers = open_set.get(item["kind"])
+        if open_numbers is None or item["number"] in open_numbers:
+            filtered.append(item)
+    after_count = len(filtered)
+    if before_count != after_count:
+        logger.info(
+            "action_queue: filtered %d closed/merged items out of %d candidates (%d open remain)",
+            before_count - after_count,
+            before_count,
+            after_count,
+        )
+    filtered.sort(key=lambda x: x["age_seconds"], reverse=True)
+    return filtered
 
 
 @router.get("/api/action_queue/{project}/{kind}/{number}/failure")
