@@ -15,7 +15,6 @@ def test_action_queue_empty(isolated_client):
 
 
 def test_action_queue_blocked_label(isolated_client, monkeypatch):
-    from server.routes import action_queue as aq_module
     monkeypatch.setitem(aq_module.PROJECTS, "project_a", "example-org/project-a")
     server._insert_event(server.ReportPayload(
         project="project_a", role="dev", event_type="blocked", issue_number=42,
@@ -363,108 +362,98 @@ def test_failure_endpoint_invalid_kind(isolated_client):
     assert resp.status_code == 400
 
 
-# ── Open-set filtering tests (LM-309) ─────────────────────────────────────────
+# ── DB-only terminal-event filtering tests (LM-311) ───────────────────────────
 
-def _make_gh_open_side_effect(open_issues: list[int], open_prs: list[int]):
-    """Return a side_effect fn for subprocess.run that fakes gh issue/pr list output."""
-    def _side_effect(cmd, **kwargs):
-        mock = MagicMock()
-        mock.returncode = 0
-        if "issue" in cmd and "list" in cmd:
-            mock.stdout = json.dumps(open_issues)
-        else:
-            mock.stdout = json.dumps(open_prs)
-        return mock
-    return _side_effect
-
-
-def test_open_set_filter_removes_closed_candidate(isolated_client, monkeypatch):
-    """A candidate row with number=99 is excluded when gh reports only [1,2,3] open."""
-    monkeypatch.setitem(aq_module.PROJECTS, "project_a", "example-org/project-a")
-    aq_module._OPEN_SET_CACHE.clear()
-
+def test_terminal_issue_closed_skips_issue(isolated_client):
+    """dev_done followed by issue_closed → action_queue skips the issue entirely."""
     server._insert_event(server.ReportPayload(
-        project="project_a", role="dev", event_type="blocked", issue_number=99,
-        detail="stale blocked"
-    ))
-
-    with patch("server.routes.action_queue.subprocess.run",
-               side_effect=_make_gh_open_side_effect([1, 2, 3], [])):
-        resp = isolated_client.get("/api/action_queue")
-
-    assert resp.status_code == 200
-    data = resp.json()
-    assert all(item["number"] != 99 for item in data)
-
-
-def test_open_set_filter_keeps_open_issue(isolated_client, monkeypatch):
-    """A candidate with number=7 is returned when gh reports it as open."""
-    monkeypatch.setitem(aq_module.PROJECTS, "project_b", "example-org/project-b")
-    aq_module._OPEN_SET_CACHE.clear()
-
-    server._insert_event(server.ReportPayload(
-        project="project_b", role="dev", event_type="blocked", issue_number=7,
-        detail="really stuck"
-    ))
-
-    with patch("server.routes.action_queue.subprocess.run",
-               side_effect=_make_gh_open_side_effect([7, 8], [])):
-        resp = isolated_client.get("/api/action_queue")
-
-    assert resp.status_code == 200
-    data = resp.json()
-    items = [it for it in data if it["number"] == 7 and it["project"] == "project_b"]
-    assert len(items) == 1
-
-
-def test_open_set_filter_one_open_one_closed(isolated_client, monkeypatch):
-    """Integration: two issues at needs-review stage — only the OPEN one is returned."""
-    monkeypatch.setitem(aq_module.PROJECTS, "project_c", "example-org/project-c")
-    aq_module._OPEN_SET_CACHE.clear()
-    # Both issues end with dev_done → needs-review stage
-    server._insert_event(server.ReportPayload(
-        project="project_c", role="dev", event_type="dev_done", issue_number=51,
+        project="loop", role="dev", event_type="dev_done", issue_number=99,
     ))
     server._insert_event(server.ReportPayload(
-        project="project_c", role="dev", event_type="dev_done", issue_number=71,
+        project="loop", role="reconciler", event_type="issue_closed", issue_number=99,
     ))
-    # Backdate both so they exceed the review threshold
+    # Backdate dev_done to exceed the review timeout threshold
     conn = sqlite3.connect(server.db.DB_PATH)
     conn.execute(
-        "UPDATE events SET created_at = datetime('now', '-7200 seconds') "
-        "WHERE project = 'project_c'"
+        "UPDATE events SET created_at = datetime('now', '-7200 seconds')"
+        " WHERE issue_number = 99 AND event_type = 'dev_done'"
     )
     conn.commit()
     conn.close()
-
-    # Only issue 51 is open on GitHub; 71 is closed/merged
-    with patch("server.routes.action_queue.subprocess.run",
-               side_effect=_make_gh_open_side_effect([51], [])):
-        resp = isolated_client.get("/api/action_queue")
-
+    resp = isolated_client.get("/api/action_queue")
     assert resp.status_code == 200
-    data = resp.json()
-    numbers = {it["number"] for it in data if it["project"] == "project_c"}
-    assert 51 in numbers
-    assert 71 not in numbers
+    assert all(item["number"] != 99 for item in resp.json())
 
 
-def test_open_set_filter_no_repo_mapping_includes_conservatively(isolated_client, monkeypatch):
-    """Items from a project with no repo mapping pass through unfiltered."""
-    # Ensure "unmapped_proj" is NOT in PROJECTS
-    monkeypatch.delitem(aq_module.PROJECTS, "unmapped_proj", raising=False)
-    aq_module._OPEN_SET_CACHE.clear()
-
+def test_terminal_in_history_skips_despite_later_label_event(isolated_client, monkeypatch):
+    """issue_closed in history trumps a later label_transition — item still skipped."""
+    monkeypatch.setenv("HANDLER_TIMEOUT_REVIEW", "60")
     server._insert_event(server.ReportPayload(
-        project="unmapped_proj", role="dev", event_type="blocked", issue_number=500,
-        detail="blocked"
+        project="loop", role="dev", event_type="dev_done", issue_number=88,
     ))
-
-    with patch("server.routes.action_queue.subprocess.run") as mock_run:
-        resp = isolated_client.get("/api/action_queue")
-
+    server._insert_event(server.ReportPayload(
+        project="loop", role="reconciler", event_type="issue_closed", issue_number=88,
+    ))
+    # Later stale label_transition that would otherwise infer a non-None stage
+    server._insert_event(server.ReportPayload(
+        project="loop", role="dev", event_type="label_transition", issue_number=88,
+        payload={
+            "target_kind": "issue",
+            "number": 88,
+            "before_labels": [],
+            "after_labels": ["needs-review"],
+            "op": "add",
+            "source": "reconciler",
+        }
+    ))
+    # Backdate all events so age exceeds threshold
+    conn = sqlite3.connect(server.db.DB_PATH)
+    conn.execute(
+        "UPDATE events SET created_at = datetime('now', '-3600 seconds')"
+        " WHERE issue_number = 88"
+    )
+    conn.commit()
+    conn.close()
+    resp = isolated_client.get("/api/action_queue")
     assert resp.status_code == 200
-    data = resp.json()
-    items = [it for it in data if it["number"] == 500]
+    assert all(item["number"] != 88 for item in resp.json())
+
+
+def test_terminal_merge_done_skips_pr(isolated_client):
+    """merge_done event causes the PR to be excluded from the action queue."""
+    server._insert_event(server.ReportPayload(
+        project="loop", role="dev", event_type="dev_done", pr_number=55,
+    ))
+    server._insert_event(server.ReportPayload(
+        project="loop", role="dev", event_type="merge_done", pr_number=55,
+    ))
+    conn = sqlite3.connect(server.db.DB_PATH)
+    conn.execute(
+        "UPDATE events SET created_at = datetime('now', '-7200 seconds')"
+        " WHERE pr_number = 55 AND event_type = 'dev_done'"
+    )
+    conn.commit()
+    conn.close()
+    resp = isolated_client.get("/api/action_queue")
+    assert resp.status_code == 200
+    assert all(item["number"] != 55 for item in resp.json())
+
+
+def test_no_terminal_event_issue_still_appears(isolated_client, monkeypatch):
+    """Issue with dev_done and no terminal event is still surfaced as timeout."""
+    monkeypatch.setenv("HANDLER_TIMEOUT_REVIEW", "60")
+    server._insert_event(server.ReportPayload(
+        project="loop", role="dev", event_type="dev_done", issue_number=77,
+    ))
+    conn = sqlite3.connect(server.db.DB_PATH)
+    conn.execute(
+        "UPDATE events SET created_at = datetime('now', '-3600 seconds')"
+        " WHERE issue_number = 77"
+    )
+    conn.commit()
+    conn.close()
+    resp = isolated_client.get("/api/action_queue")
+    assert resp.status_code == 200
+    items = [it for it in resp.json() if it["number"] == 77]
     assert len(items) == 1
-    mock_run.assert_not_called()
+    assert items[0]["reason"] == "timeout"
