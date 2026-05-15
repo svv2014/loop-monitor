@@ -203,7 +203,6 @@ def render_cards(projects: list[dict], width: int, max_rows: int = 2) -> list[st
         status = (p.get("status") or "idle").lower()
         glyph = STATUS_GLYPHS.get(status, "◉")
         sc = STATUS_COLORS.get(status, "")
-        age = _since(p)
         status_line = colorize(sc, f"{glyph} {status:<4}")
         pts_line = f"{pts} pts"
 
@@ -423,9 +422,9 @@ def render_activity(feed: list[dict], width: int, limit: int = 10) -> list[str]:
             target = f"PR{ev['pr_number']}"
         ago = _since(ev)
         role_disp = colorize(color, f"{glyph} {_truncate(role, 8):<8}")
-        # Plain text version for length math
-        plain = f"  {ago:>4}  {glyph} {_truncate(role, 8):<8}  {_truncate(project, 14):<14} {_truncate(etype, 18):<18} {target}"
-        content = f"  {ago:>4}  {role_disp}  {_truncate(project, 14):<14} {_truncate(etype, 18):<18} {target}"
+        proj_t = _truncate(project, 14)
+        etype_t = _truncate(etype, 18)
+        content = f"  {ago:>4}  {role_disp}  {proj_t:<14} {etype_t:<18} {target}"
         # Truncate to fit
         if len(_strip_ansi(content)) > inner:
             content = content[: inner + (len(content) - len(_strip_ansi(content)))]
