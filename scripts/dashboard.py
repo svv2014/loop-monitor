@@ -486,13 +486,21 @@ def render_stuck(queue: list[dict], width: int, limit: int = 3) -> list[str]:
     return lines
 
 
-def render_activity(feed: list[dict], width: int, limit: int = 10) -> list[str]:
-    lines = [_box_sep(width), _box_row(bold(f"ACTIVITY (last {limit})"), width), _box_row("", width)]
+def render_activity(feed: list[dict], width: int, limit: int = 10,
+                    page: int = 1) -> list[str]:
+    total = len(feed)
+    pages = max(1, (total + limit - 1) // limit) if limit else 1
+    page = max(1, min(page, pages))
+    start = (page - 1) * limit
+    chunk = feed[start:start + limit]
+
+    header = f"ACTIVITY (page {page}/{pages}, showing {len(chunk)} of {total})"
+    lines = [_box_sep(width), _box_row(bold(header), width), _box_row("", width)]
     inner = width - 4
-    if not feed:
+    if not chunk:
         lines.append(_box_row("  no recent events.", width))
         return lines
-    for ev in feed[:limit]:
+    for ev in chunk:
         role = (ev.get("role") or "").lower()
         glyph = ROLE_GLYPHS.get(role, "•")
         color = ROLE_COLORS.get(role, "")
@@ -508,14 +516,71 @@ def render_activity(feed: list[dict], width: int, limit: int = 10) -> list[str]:
         proj_t = _truncate(project, 14)
         etype_t = _truncate(etype, 18)
         content = f"  {ago:>4}  {role_disp}  {proj_t:<14} {etype_t:<18} {target}"
-        # Truncate to fit
         if len(_strip_ansi(content)) > inner:
             content = content[: inner + (len(content) - len(_strip_ansi(content)))]
         lines.append(_box_row(content, width))
     return lines
 
 
-def render_snapshot(base_url: str) -> str:
+def render_activity_by_project(feed: list[dict], stats_activity: list[dict],
+                               active: list[dict], width: int) -> list[str]:
+    """Per-project aggregate: status · last event + age · 7d sparkline · 7d total."""
+    # Latest event per project from feed
+    latest_by_proj: dict[str, dict] = {}
+    for ev in feed:
+        p = ev.get("project") or ""
+        if p and p not in latest_by_proj:
+            latest_by_proj[p] = ev
+
+    # 7-day daily counts per project from /api/stats/activity
+    by_proj_day: dict[str, dict[str, int]] = {}
+    all_dates: set[str] = set()
+    for row in stats_activity or []:
+        proj = row.get("project") or ""
+        date = row.get("date") or ""
+        n = int(row.get("n") or 0)
+        if not proj or not date:
+            continue
+        by_proj_day.setdefault(proj, {})[date] = n
+        all_dates.add(date)
+    dates_sorted = sorted(all_dates)[-7:]
+
+    busy_projs = {a.get("project", "") for a in active}
+
+    # Project list: union of feed + stats
+    projects = sorted(set(latest_by_proj.keys()) | set(by_proj_day.keys()))
+
+    # Order by 7d total desc
+    def _total(p: str) -> int:
+        return sum(by_proj_day.get(p, {}).get(d, 0) for d in dates_sorted)
+    projects.sort(key=_total, reverse=True)
+
+    header = "ACTIVITY · per project (7d)"
+    lines = [_box_sep(width), _box_row(bold(header), width)]
+    if not projects:
+        lines.append(_box_row("  no project activity.", width))
+        return lines
+
+    for p in projects:
+        ev = latest_by_proj.get(p)
+        if ev:
+            ago = _since(ev)
+            etype = _truncate(ev.get("event_type") or "", 14)
+        else:
+            ago = "—"
+            etype = "—"
+        counts = [by_proj_day.get(p, {}).get(d, 0) for d in dates_sorted]
+        spark = _sparkline(counts) if counts else ""
+        total7 = sum(counts)
+        is_busy = p in busy_projs
+        dot = colorize(ANSI_GREEN, "●") if is_busy else colorize(ANSI_CYAN, "○")
+        proj_disp = _truncate(p, 14)
+        line = f"  {dot} {proj_disp:<14} {ago:>4}  {etype:<14} {spark:<7} {total7:>5,}"
+        lines.append(_box_row(line, width))
+    return lines
+
+
+def render_snapshot(base_url: str, view: str = "aggregate", page: int = 1) -> str:
     active = _safe_fetch(base_url, "/api/active", [])
     board = _safe_fetch(base_url, "/api/board", [])
     feed = _safe_fetch(base_url, "/api/feed", [])
@@ -523,6 +588,7 @@ def render_snapshot(base_url: str) -> str:
     quality = _safe_fetch(base_url, "/api/analytics/quality", {})
     scanner = _safe_fetch(base_url, "/api/scanner_state", {})
     events_graph = _safe_fetch(base_url, "/api/events_graph?window_hours=24", {})
+    stats_activity = _safe_fetch(base_url, "/api/stats/activity", []) if view == "aggregate" else []
 
     term_cols = _term_cols()
 
@@ -539,17 +605,27 @@ def render_snapshot(base_url: str) -> str:
 
     summary_lines = render_summary(active, board, queue, quality, scanner, events_graph, width)
     stuck_lines = render_stuck(queue, width, limit=3)
-    # banner(5) + summary(~7-8) + stuck(~5) + activity header(2) + bottom(1)
-    reserved = 5 + len(summary_lines) + len(stuck_lines) + 2 + 1
-    activity_limit = max(3, term_rows - reserved)
 
     lines: list[str] = []
     lines += render_banner(base_url, width)
     lines += summary_lines
     lines += stuck_lines
-    lines += render_activity(feed, width, limit=activity_limit)
-    lines.append(_box_bot(width))
 
+    if view == "feed":
+        # banner + summary + stuck + activity header(3) + footer(2) + bottom(1)
+        reserved = 5 + len(summary_lines) + len(stuck_lines) + 3 + 2 + 1
+        per_page = max(3, term_rows - reserved)
+        lines += render_activity(feed, width, limit=per_page, page=page)
+        # Footer hint
+        total = len(feed)
+        pages = max(1, (total + per_page - 1) // per_page)
+        hint = f"  --feed --page N  (N: 1..{pages})    --aggregate for per-project view"
+        lines.append(_box_sep(width))
+        lines.append(_box_row(hint, width))
+    else:
+        lines += render_activity_by_project(feed, stats_activity, active, width)
+
+    lines.append(_box_bot(width))
     return "\n".join(lines)
 
 
@@ -560,11 +636,19 @@ def main(argv: list[str] | None = None) -> int:
                         help=f"refresh interval in seconds (default: {DEFAULT_INTERVAL})")
     parser.add_argument("--once", action="store_true",
                         help="print one snapshot and exit")
+    parser.add_argument("--feed", action="store_true",
+                        help="detailed event feed view (paginated)")
+    parser.add_argument("--aggregate", action="store_true",
+                        help="per-project activity aggregate (default)")
+    parser.add_argument("--page", type=int, default=1,
+                        help="feed page number (with --feed)")
     args = parser.parse_args(argv)
+
+    view = "feed" if args.feed else "aggregate"
 
     if args.once:
         try:
-            print(render_snapshot(args.url))
+            print(render_snapshot(args.url, view=view, page=args.page))
             return 0
         except (urllib.error.URLError, urllib.error.HTTPError, ConnectionError, OSError) as e:
             print(f"loop-monitor unreachable at {args.url}: {e}", file=sys.stderr)
@@ -573,7 +657,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         while True:
             try:
-                snapshot = render_snapshot(args.url)
+                snapshot = render_snapshot(args.url, view=view, page=args.page)
                 if sys.stdout.isatty():
                     sys.stdout.write(CLEAR + snapshot + "\n")
                 else:
