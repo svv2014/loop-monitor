@@ -175,7 +175,18 @@ def _center_padded(text: str, width: int) -> str:
     return " " * left_pad + text + " " * right_pad
 
 
-def render_cards(projects: list[dict], width: int) -> list[str]:
+def _dedupe_projects(rows: list[dict]) -> list[dict]:
+    """Collapse board rows (one per project×role×model) into one entry per project."""
+    agg: dict[str, dict] = {}
+    for r in rows:
+        name = r.get("project") or r.get("name") or "?"
+        if name not in agg:
+            agg[name] = {"project": name, "total_points": 0, "status": r.get("status") or "idle"}
+        agg[name]["total_points"] += int(r.get("total_points") or r.get("score") or 0)
+    return sorted(agg.values(), key=lambda p: p["total_points"], reverse=True)
+
+
+def render_cards(projects: list[dict], width: int, max_rows: int = 2) -> list[str]:
     """One box per project; wrap to next row when line would exceed width."""
     if not projects:
         return [_box_row("  No projects.", width), _box_row("", width)]
@@ -184,6 +195,7 @@ def render_cards(projects: list[dict], width: int) -> list[str]:
     CARD_TOTAL = CARD_W + 2
     GAP = 2
     cards_per_row = max(1, (width - 2) // (CARD_TOTAL + GAP))
+    projects = projects[: cards_per_row * max_rows]
 
     def make_card(p: dict) -> list[str]:
         name = _truncate(p.get("project") or p.get("name") or "?", CARD_W)
@@ -191,17 +203,14 @@ def render_cards(projects: list[dict], width: int) -> list[str]:
         status = (p.get("status") or "idle").lower()
         glyph = STATUS_GLYPHS.get(status, "◉")
         sc = STATUS_COLORS.get(status, "")
-        age = _since(p)
         status_line = colorize(sc, f"{glyph} {status:<4}")
         pts_line = f"{pts} pts"
-        age_line = age
 
         rows = [
             "┌" + "─" * CARD_W + "┐",
             "│" + _pad_inner(bold(name), CARD_W) + "│",
             "│" + _pad_inner(status_line, CARD_W) + "│",
             "│" + _pad_inner(pts_line, CARD_W) + "│",
-            "│" + _pad_inner(age_line, CARD_W) + "│",
             "└" + "─" * CARD_W + "┘",
         ]
         return rows
@@ -256,11 +265,14 @@ def render_leaderboard(board: list[dict], col_width: int, limit: int = 5) -> lis
     header = bold("LEADERBOARD")
     lines = [header, ""]
     for i, row in enumerate(board[:limit], start=1):
-        role = _truncate(row.get("role") or row.get("project") or "?", 12)
+        project = row.get("project") or "?"
+        role = row.get("role") or ""
         pts = int(row.get("total_points") or row.get("score") or 0)
         color = ROLE_COLORS.get(role.lower(), "")
-        role_colored = colorize(color, role)
-        lines.append(f"{i}. {role_colored:<12} {pts} pts")
+        label = _truncate(f"{project}·{role}" if role else project, col_width - 9)
+        label_colored = colorize(color, label)
+        pad = max(0, (col_width - 9) - len(_strip_ansi(label)))
+        lines.append(f"{i}. {label_colored}{' ' * pad} {pts} pts")
     return lines
 
 
@@ -335,10 +347,97 @@ def render_simple(base_url: str, active: list[dict], board: list[dict],
     return "\n".join(parts)
 
 
+def _safe_fetch(base_url: str, path: str, default):
+    try:
+        return fetch_json(base_url, path) or default
+    except (urllib.error.URLError, urllib.error.HTTPError, ConnectionError, OSError):
+        return default
+
+
+def render_summary(active: list[dict], board: list[dict], queue: list[dict],
+                   quality: dict, feed: list[dict], width: int) -> list[str]:
+    projects = _dedupe_projects(board) if board else []
+    busy_names = {a.get("project", "") for a in active}
+    busy = sum(1 for p in projects if p["project"] in busy_names)
+    total_proj = len(projects)
+    total_pts = sum(p["total_points"] for p in projects)
+
+    queue_total = len(queue)
+    queue_late = sum(1 for q in queue if q.get("threshold_seconds")
+                     and q.get("age_seconds", 0) > q["threshold_seconds"])
+
+    v = (quality or {}).get("verdicts") or {}
+    clean = v.get("clean", 0)
+    light = v.get("light_rework", 0)
+    heavy = v.get("heavy_rework", 0)
+    blocked = v.get("blocked", 0)
+
+    # events/hr from feed (events in last 3600s)
+    now = datetime.now(timezone.utc).timestamp()
+    recent_hr = 0
+    for ev in feed:
+        ts = ev.get("created_at") or ev.get("ts")
+        if not ts:
+            continue
+        try:
+            dt = datetime.fromisoformat(str(ts).replace(" ", "T"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            if now - dt.timestamp() <= 3600:
+                recent_hr += 1
+        except Exception:
+            pass
+
+    late_str = colorize(ANSI_RED, f"⚠ {queue_late} late") if queue_late else "0 late"
+    busy_str = colorize(ANSI_GREEN, f"{busy} busy") if busy else "0 busy"
+
+    lines = [_box_row(bold("SUMMARY"), width), _box_row("", width)]
+    lines.append(_box_row(
+        f"  projects {total_proj:>3}  ({busy_str}, {total_proj - busy} idle)"
+        f"   events/hr {recent_hr:>3}   points {total_pts:>5,}", width))
+    lines.append(_box_row(
+        f"  queue   {queue_total:>4}   {late_str}", width))
+    lines.append(_box_row(
+        f"  verdicts  clean {clean} · light {light} · heavy {heavy} · blocked {blocked}",
+        width))
+    return lines
+
+
+def render_activity(feed: list[dict], width: int, limit: int = 10) -> list[str]:
+    lines = [_box_sep(width), _box_row(bold(f"ACTIVITY (last {limit})"), width), _box_row("", width)]
+    inner = width - 4
+    if not feed:
+        lines.append(_box_row("  no recent events.", width))
+        return lines
+    for ev in feed[:limit]:
+        role = (ev.get("role") or "").lower()
+        glyph = ROLE_GLYPHS.get(role, "•")
+        color = ROLE_COLORS.get(role, "")
+        etype = ev.get("event_type") or ""
+        project = ev.get("project") or ""
+        target = ""
+        if ev.get("issue_number"):
+            target = f"#{ev['issue_number']}"
+        elif ev.get("pr_number"):
+            target = f"PR{ev['pr_number']}"
+        ago = _since(ev)
+        role_disp = colorize(color, f"{glyph} {_truncate(role, 8):<8}")
+        proj_t = _truncate(project, 14)
+        etype_t = _truncate(etype, 18)
+        content = f"  {ago:>4}  {role_disp}  {proj_t:<14} {etype_t:<18} {target}"
+        # Truncate to fit
+        if len(_strip_ansi(content)) > inner:
+            content = content[: inner + (len(content) - len(_strip_ansi(content)))]
+        lines.append(_box_row(content, width))
+    return lines
+
+
 def render_snapshot(base_url: str) -> str:
-    active = fetch_json(base_url, "/api/active") or []
-    board = fetch_json(base_url, "/api/board") or []
-    feed = fetch_json(base_url, "/api/feed") or []
+    active = _safe_fetch(base_url, "/api/active", [])
+    board = _safe_fetch(base_url, "/api/board", [])
+    feed = _safe_fetch(base_url, "/api/feed", [])
+    queue = _safe_fetch(base_url, "/api/action_queue", [])
+    quality = _safe_fetch(base_url, "/api/analytics/quality", {})
 
     term_cols = _term_cols()
 
@@ -347,26 +446,19 @@ def render_snapshot(base_url: str) -> str:
 
     width = min(term_cols, 100)
 
+    # How many activity rows fit?
+    term_rows = 24
+    try:
+        term_rows = os.get_terminal_size().lines
+    except OSError:
+        pass
+    # banner(5) + summary(5) + separator(1) + activity header(2) + bottom(1) = 14
+    activity_limit = max(3, term_rows - 14)
+
     lines: list[str] = []
     lines += render_banner(base_url, width)
-
-    # Project cards (use board rows as proxy for project status)
-    projects = board if board else []
-    if active:
-        # Merge active status into project list
-        active_map = {a.get("project", ""): a for a in active}
-        for p in projects:
-            name = p.get("project") or p.get("name") or ""
-            if name in active_map:
-                p["status"] = "busy"
-    lines += render_cards(projects, width)
-
-    # Two-column: feed + leaderboard
-    lines += render_two_column(feed, board, width)
-
-    # Optional judge verdict
-    lines += render_verdict(feed, width)
-
+    lines += render_summary(active, board, queue, quality, feed, width)
+    lines += render_activity(feed, width, limit=activity_limit)
     lines.append(_box_bot(width))
 
     return "\n".join(lines)
