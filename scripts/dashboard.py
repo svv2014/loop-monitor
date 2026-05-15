@@ -354,8 +354,41 @@ def _safe_fetch(base_url: str, path: str, default):
         return default
 
 
+SPARK_CHARS = " ▁▂▃▄▅▆▇█"
+
+
+def _sparkline(counts: list[int]) -> str:
+    if not counts:
+        return ""
+    peak = max(counts)
+    if peak == 0:
+        return SPARK_CHARS[0] * len(counts)
+    out = []
+    for c in counts:
+        # 1..8 levels; 0 stays blank
+        idx = 0 if c == 0 else 1 + int((c / peak) * (len(SPARK_CHARS) - 2))
+        idx = min(idx, len(SPARK_CHARS) - 1)
+        out.append(SPARK_CHARS[idx])
+    return "".join(out)
+
+
+def _events_24h_hourly(events_graph: dict) -> tuple[list[int], int]:
+    """Returns (24-element hourly counts list, total)."""
+    buckets = (events_graph or {}).get("buckets") or []
+    by_hour: dict[str, int] = {}
+    for b in buckets:
+        hr = b.get("hour", "")
+        by_hour[hr] = by_hour.get(hr, 0) + int(b.get("count") or 0)
+    hours_sorted = sorted(by_hour.keys())[-24:]
+    counts = [by_hour[h] for h in hours_sorted]
+    # Pad to 24
+    counts = [0] * (24 - len(counts)) + counts
+    return counts, sum(counts)
+
+
 def render_summary(active: list[dict], board: list[dict], queue: list[dict],
-                   quality: dict, feed: list[dict], width: int) -> list[str]:
+                   quality: dict, scanner: dict, events_graph: dict,
+                   width: int) -> list[str]:
     projects = _dedupe_projects(board) if board else []
     busy_names = {a.get("project", "") for a in active}
     busy = sum(1 for p in projects if p["project"] in busy_names)
@@ -372,34 +405,84 @@ def render_summary(active: list[dict], board: list[dict], queue: list[dict],
     heavy = v.get("heavy_rework", 0)
     blocked = v.get("blocked", 0)
 
-    # events/hr from feed (events in last 3600s)
-    now = datetime.now(timezone.utc).timestamp()
-    recent_hr = 0
-    for ev in feed:
-        ts = ev.get("created_at") or ev.get("ts")
-        if not ts:
-            continue
-        try:
-            dt = datetime.fromisoformat(str(ts).replace(" ", "T"))
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            if now - dt.timestamp() <= 3600:
-                recent_hr += 1
-        except Exception:
-            pass
+    counts_24h, total_24h = _events_24h_hourly(events_graph or {})
+    spark = _sparkline(counts_24h)
 
     late_str = colorize(ANSI_RED, f"⚠ {queue_late} late") if queue_late else "0 late"
     busy_str = colorize(ANSI_GREEN, f"{busy} busy") if busy else "0 busy"
 
+    # Active workers inline: role@project·target
+    def _worker_label(w: dict) -> str:
+        role = (w.get("role") or "?").lower()
+        proj = w.get("project") or "?"
+        if w.get("issue_number"):
+            tgt = f"#{w['issue_number']}"
+        elif w.get("pr_number"):
+            tgt = f"PR{w['pr_number']}"
+        else:
+            tgt = ""
+        color = ROLE_COLORS.get(role, "")
+        label = f"{role}@{proj}" + (f"·{tgt}" if tgt else "")
+        return colorize(color, label)
+
+    active_workers = active[:4]
+    if active_workers:
+        active_line = " · ".join(_worker_label(w) for w in active_workers)
+        if len(active) > 4:
+            active_line += f"  +{len(active) - 4} more"
+    else:
+        active_line = colorize(ANSI_YELLOW, "(none)")
+
+    # Stages line from scanner_state
+    stages = (scanner or {}).get("stages") or {}
+    stage_order = ["po", "dev", "qa", "review", "merge"]
+    stage_bits = []
+    for s in stage_order:
+        n = (stages.get(s) or {}).get("in_flight", 0)
+        bit = f"{s}:{n}"
+        if n > 0:
+            bit = colorize(ANSI_GREEN, bit)
+        stage_bits.append(bit)
+    stages_line = " ".join(stage_bits)
+
+    # Retries (escalation candidates from scanner_state)
+    retries = (scanner or {}).get("retries") or []
+    over = [r for r in retries if (r.get("count") or 0) > (r.get("max") or 0)]
+    retries_line = ""
+    if over:
+        retries_line = colorize(ANSI_RED, f"  retries  ⚠ {len(over)} over-max")
+
     lines = [_box_row(bold("SUMMARY"), width), _box_row("", width)]
     lines.append(_box_row(
         f"  projects {total_proj:>3}  ({busy_str}, {total_proj - busy} idle)"
-        f"   events/hr {recent_hr:>3}   points {total_pts:>5,}", width))
-    lines.append(_box_row(
-        f"  queue   {queue_total:>4}   {late_str}", width))
+        f"   queue {queue_total:>4}  {late_str}   pts {total_pts:>5,}", width))
+    lines.append(_box_row(f"  active   {active_line}", width))
+    lines.append(_box_row(f"  stages   {stages_line}", width))
+    lines.append(_box_row(f"  events 24h  {spark}  ({total_24h})", width))
     lines.append(_box_row(
         f"  verdicts  clean {clean} · light {light} · heavy {heavy} · blocked {blocked}",
         width))
+    if retries_line:
+        lines.append(_box_row(retries_line, width))
+    return lines
+
+
+def render_stuck(queue: list[dict], width: int, limit: int = 3) -> list[str]:
+    """Top N oldest items from action queue."""
+    if not queue:
+        return []
+    items = sorted(queue, key=lambda q: q.get("age_seconds", 0), reverse=True)[:limit]
+    lines = [_box_sep(width), _box_row(bold(f"STUCK (oldest {limit})"), width)]
+    for it in items:
+        age = _since(it)
+        proj = it.get("project") or "?"
+        kind = it.get("kind") or "?"
+        num = it.get("number") or "?"
+        stage = it.get("stage") or "?"
+        reason = it.get("reason") or ""
+        target = f"{proj}·{kind}#{num}"
+        line = f"  {age:>5}  {_truncate(target, 28):<28} {_truncate(stage, 14):<14} {reason}"
+        lines.append(_box_row(line, width))
     return lines
 
 
@@ -438,6 +521,8 @@ def render_snapshot(base_url: str) -> str:
     feed = _safe_fetch(base_url, "/api/feed", [])
     queue = _safe_fetch(base_url, "/api/action_queue", [])
     quality = _safe_fetch(base_url, "/api/analytics/quality", {})
+    scanner = _safe_fetch(base_url, "/api/scanner_state", {})
+    events_graph = _safe_fetch(base_url, "/api/events_graph?window_hours=24", {})
 
     term_cols = _term_cols()
 
@@ -446,18 +531,22 @@ def render_snapshot(base_url: str) -> str:
 
     width = min(term_cols, 100)
 
-    # How many activity rows fit?
     term_rows = 24
     try:
         term_rows = os.get_terminal_size().lines
     except OSError:
         pass
-    # banner(5) + summary(5) + separator(1) + activity header(2) + bottom(1) = 14
-    activity_limit = max(3, term_rows - 14)
+
+    summary_lines = render_summary(active, board, queue, quality, scanner, events_graph, width)
+    stuck_lines = render_stuck(queue, width, limit=3)
+    # banner(5) + summary(~7-8) + stuck(~5) + activity header(2) + bottom(1)
+    reserved = 5 + len(summary_lines) + len(stuck_lines) + 2 + 1
+    activity_limit = max(3, term_rows - reserved)
 
     lines: list[str] = []
     lines += render_banner(base_url, width)
-    lines += render_summary(active, board, queue, quality, feed, width)
+    lines += summary_lines
+    lines += stuck_lines
     lines += render_activity(feed, width, limit=activity_limit)
     lines.append(_box_bot(width))
 
