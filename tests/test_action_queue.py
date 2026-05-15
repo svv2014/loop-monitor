@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import server
 import server.db
 import server.helpers.github as gh_helper
+import server.routes.action_queue as aq_module
 
 
 def test_action_queue_empty(isolated_client):
@@ -360,3 +361,110 @@ def test_failure_endpoint_invalid_kind(isolated_client):
     """Returns 400 for kind values other than 'issue' or 'pr'."""
     resp = isolated_client.get("/api/action_queue/loop/comment/42/failure")
     assert resp.status_code == 400
+
+
+# ── Open-set filtering tests (LM-309) ─────────────────────────────────────────
+
+def _make_gh_open_side_effect(open_issues: list[int], open_prs: list[int]):
+    """Return a side_effect fn for subprocess.run that fakes gh issue/pr list output."""
+    def _side_effect(cmd, **kwargs):
+        mock = MagicMock()
+        mock.returncode = 0
+        if "issue" in cmd and "list" in cmd:
+            mock.stdout = json.dumps(open_issues)
+        else:
+            mock.stdout = json.dumps(open_prs)
+        return mock
+    return _side_effect
+
+
+def test_open_set_filter_removes_closed_candidate(isolated_client, monkeypatch):
+    """A candidate row with number=99 is excluded when gh reports only [1,2,3] open."""
+    monkeypatch.setitem(aq_module.PROJECTS, "project_a", "example-org/project-a")
+    aq_module._OPEN_SET_CACHE.clear()
+
+    server._insert_event(server.ReportPayload(
+        project="project_a", role="dev", event_type="blocked", issue_number=99,
+        detail="stale blocked"
+    ))
+
+    with patch("server.routes.action_queue.subprocess.run",
+               side_effect=_make_gh_open_side_effect([1, 2, 3], [])):
+        resp = isolated_client.get("/api/action_queue")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert all(item["number"] != 99 for item in data)
+
+
+def test_open_set_filter_keeps_open_issue(isolated_client, monkeypatch):
+    """A candidate with number=7 is returned when gh reports it as open."""
+    monkeypatch.setitem(aq_module.PROJECTS, "project_b", "example-org/project-b")
+    aq_module._OPEN_SET_CACHE.clear()
+
+    server._insert_event(server.ReportPayload(
+        project="project_b", role="dev", event_type="blocked", issue_number=7,
+        detail="really stuck"
+    ))
+
+    with patch("server.routes.action_queue.subprocess.run",
+               side_effect=_make_gh_open_side_effect([7, 8], [])):
+        resp = isolated_client.get("/api/action_queue")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    items = [it for it in data if it["number"] == 7 and it["project"] == "project_b"]
+    assert len(items) == 1
+
+
+def test_open_set_filter_one_open_one_closed(isolated_client, monkeypatch):
+    """Integration: two issues at needs-review stage — only the OPEN one is returned."""
+    monkeypatch.setitem(aq_module.PROJECTS, "project_c", "example-org/project-c")
+    aq_module._OPEN_SET_CACHE.clear()
+    # Both issues end with dev_done → needs-review stage
+    server._insert_event(server.ReportPayload(
+        project="project_c", role="dev", event_type="dev_done", issue_number=51,
+    ))
+    server._insert_event(server.ReportPayload(
+        project="project_c", role="dev", event_type="dev_done", issue_number=71,
+    ))
+    # Backdate both so they exceed the review threshold
+    conn = sqlite3.connect(server.db.DB_PATH)
+    conn.execute(
+        "UPDATE events SET created_at = datetime('now', '-7200 seconds') "
+        "WHERE project = 'project_c'"
+    )
+    conn.commit()
+    conn.close()
+
+    # Only issue 51 is open on GitHub; 71 is closed/merged
+    with patch("server.routes.action_queue.subprocess.run",
+               side_effect=_make_gh_open_side_effect([51], [])):
+        resp = isolated_client.get("/api/action_queue")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    numbers = {it["number"] for it in data if it["project"] == "project_c"}
+    assert 51 in numbers
+    assert 71 not in numbers
+
+
+def test_open_set_filter_no_repo_mapping_includes_conservatively(isolated_client, monkeypatch):
+    """Items from a project with no repo mapping pass through unfiltered."""
+    # Ensure "unmapped_proj" is NOT in PROJECTS
+    monkeypatch.delitem(aq_module.PROJECTS, "unmapped_proj", raising=False)
+    aq_module._OPEN_SET_CACHE.clear()
+
+    server._insert_event(server.ReportPayload(
+        project="unmapped_proj", role="dev", event_type="blocked", issue_number=500,
+        detail="blocked"
+    ))
+
+    with patch("server.routes.action_queue.subprocess.run") as mock_run:
+        resp = isolated_client.get("/api/action_queue")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    items = [it for it in data if it["number"] == 500]
+    assert len(items) == 1
+    mock_run.assert_not_called()
