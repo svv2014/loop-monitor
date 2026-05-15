@@ -372,18 +372,41 @@ def _sparkline(counts: list[int]) -> str:
     return "".join(out)
 
 
-def _events_24h_hourly(events_graph: dict) -> tuple[list[int], int]:
-    """Returns (24-element hourly counts list, total)."""
+def _events_24h_hourly(events_graph: dict) -> tuple[list[int], int, list[str], dict[str, int]]:
+    """Returns (24-element hourly counts, total, hour-keys list, role totals)."""
     buckets = (events_graph or {}).get("buckets") or []
     by_hour: dict[str, int] = {}
+    by_role: dict[str, int] = {}
     for b in buckets:
         hr = b.get("hour", "")
-        by_hour[hr] = by_hour.get(hr, 0) + int(b.get("count") or 0)
+        n = int(b.get("count") or 0)
+        role = (b.get("role") or "").lower()
+        by_hour[hr] = by_hour.get(hr, 0) + n
+        if role:
+            by_role[role] = by_role.get(role, 0) + n
     hours_sorted = sorted(by_hour.keys())[-24:]
     counts = [by_hour[h] for h in hours_sorted]
-    # Pad to 24
-    counts = [0] * (24 - len(counts)) + counts
-    return counts, sum(counts)
+    pad = 24 - len(counts)
+    counts = [0] * pad + counts
+    hours_padded = [""] * pad + hours_sorted
+    return counts, sum(counts), hours_padded, by_role
+
+
+def _peak_hour(counts: list[int], hours: list[str]) -> tuple[str, int]:
+    if not counts or max(counts) == 0:
+        return ("—", 0)
+    idx = counts.index(max(counts))
+    hr_iso = hours[idx] if idx < len(hours) else ""
+    label = "—"
+    if hr_iso:
+        try:
+            dt = datetime.fromisoformat(hr_iso.replace(" ", "T"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            label = dt.astimezone().strftime("%Hh")
+        except Exception:
+            label = "—"
+    return (label, counts[idx])
 
 
 def render_summary(active: list[dict], board: list[dict], queue: list[dict],
@@ -405,8 +428,18 @@ def render_summary(active: list[dict], board: list[dict], queue: list[dict],
     heavy = v.get("heavy_rework", 0)
     blocked = v.get("blocked", 0)
 
-    counts_24h, total_24h = _events_24h_hourly(events_graph or {})
+    counts_24h, total_24h, hours_24h, role_totals = _events_24h_hourly(events_graph or {})
     spark = _sparkline(counts_24h)
+    peak_label, peak_n = _peak_hour(counts_24h, hours_24h)
+    # role distribution: top 6 roles by share
+    role_share_total = sum(role_totals.values()) or 1
+    top_roles = sorted(role_totals.items(), key=lambda kv: kv[1], reverse=True)[:6]
+    role_bits = []
+    for r, n in top_roles:
+        pct = round(100 * n / role_share_total)
+        color = ROLE_COLORS.get(r, "")
+        role_bits.append(colorize(color, f"{r} {pct}%"))
+    role_line = " · ".join(role_bits) if role_bits else "—"
 
     late_str = colorize(ANSI_RED, f"⚠ {queue_late} late") if queue_late else "0 late"
     busy_str = colorize(ANSI_GREEN, f"{busy} busy") if busy else "0 busy"
@@ -458,7 +491,9 @@ def render_summary(active: list[dict], board: list[dict], queue: list[dict],
         f"   queue {queue_total:>4}  {late_str}   pts {total_pts:>5,}", width))
     lines.append(_box_row(f"  active   {active_line}", width))
     lines.append(_box_row(f"  stages   {stages_line}", width))
-    lines.append(_box_row(f"  events 24h  {spark}  ({total_24h})", width))
+    lines.append(_box_row(
+        f"  events 24h  {spark}  ({total_24h})   peak {peak_label} ({peak_n})", width))
+    lines.append(_box_row(f"              {role_line}", width))
     lines.append(_box_row(
         f"  verdicts  clean {clean} · light {light} · heavy {heavy} · blocked {blocked}",
         width))
@@ -523,7 +558,8 @@ def render_activity(feed: list[dict], width: int, limit: int = 10,
 
 
 def render_activity_by_project(feed: list[dict], stats_activity: list[dict],
-                               active: list[dict], width: int) -> list[str]:
+                               active: list[dict], width: int,
+                               limit: int = 99) -> list[str]:
     """Per-project aggregate: status · last event + age · 7d sparkline · 7d total."""
     # Latest event per project from feed
     latest_by_proj: dict[str, dict] = {}
@@ -555,13 +591,15 @@ def render_activity_by_project(feed: list[dict], stats_activity: list[dict],
         return sum(by_proj_day.get(p, {}).get(d, 0) for d in dates_sorted)
     projects.sort(key=_total, reverse=True)
 
-    header = "ACTIVITY · per project (7d)"
+    shown = projects[:limit]
+    hidden = len(projects) - len(shown)
+    header = f"ACTIVITY · per project (7d) — {len(shown)} of {len(projects)}" if hidden else "ACTIVITY · per project (7d)"
     lines = [_box_sep(width), _box_row(bold(header), width)]
-    if not projects:
+    if not shown:
         lines.append(_box_row("  no project activity.", width))
         return lines
 
-    for p in projects:
+    for p in shown:
         ev = latest_by_proj.get(p)
         if ev:
             ago = _since(ev)
@@ -623,7 +661,10 @@ def render_snapshot(base_url: str, view: str = "aggregate", page: int = 1) -> st
         lines.append(_box_sep(width))
         lines.append(_box_row(hint, width))
     else:
-        lines += render_activity_by_project(feed, stats_activity, active, width)
+        # banner + summary + stuck + header(2) + bottom(1)
+        reserved = 5 + len(summary_lines) + len(stuck_lines) + 2 + 1
+        agg_limit = max(2, term_rows - reserved)
+        lines += render_activity_by_project(feed, stats_activity, active, width, limit=agg_limit)
 
     lines.append(_box_bot(width))
     return "\n".join(lines)
