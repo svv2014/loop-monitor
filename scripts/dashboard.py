@@ -593,7 +593,10 @@ def render_activity_by_project(feed: list[dict], stats_activity: list[dict],
 
     shown = projects[:limit]
     hidden = len(projects) - len(shown)
-    header = f"ACTIVITY · per project (7d) — {len(shown)} of {len(projects)}" if hidden else "ACTIVITY · per project (7d)"
+    if hidden:
+        header = f"ACTIVITY · per project (7d) — {len(shown)} of {len(projects)}"
+    else:
+        header = "ACTIVITY · per project (7d)"
     lines = [_box_sep(width), _box_row(bold(header), width)]
     if not shown:
         lines.append(_box_row("  no project activity.", width))
