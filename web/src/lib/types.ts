@@ -329,6 +329,29 @@ export interface CostTrendBucket {
   issue_count: number;
 }
 
+export interface CostTimeseriesTopIssue {
+  project: string;
+  issue_number: number;
+  rework_events: number;
+}
+
+export interface CostTimeseriesBucket {
+  date: string;
+  total_rework_events: number;
+  by_stage: {
+    po_failed: number;
+    dev_rework: number;
+    qa_fail: number;
+    review_reject: number;
+  };
+  top_issues: CostTimeseriesTopIssue[];
+}
+
+export interface CostTimeseries {
+  window_days: number;
+  buckets: CostTimeseriesBucket[];
+}
+
 export interface CostTrend {
   window_days: number;
   today: {

@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { fetchIssuesCost, fetchCostTrend } from '../lib/api';
+import { fetchIssuesCost, fetchCostTrend, fetchCostTimeseries } from '../lib/api';
 import type { IssueCostRow } from '../lib/types';
 import CostTrendStrip from '../components/CostTrendStrip';
+import CostTimeseries from '../components/CostTimeseries';
 
 const LIMIT = 50;
 
@@ -51,20 +52,47 @@ interface CostProps {
   globalProjectFilter?: string | null;
 }
 
+function getHashDay(): string | null {
+  const m = window.location.hash.match(/^#cost_day=(\d{4}-\d{2}-\d{2})$/);
+  return m ? m[1] : null;
+}
+
 export default function Cost({ globalProjectFilter }: CostProps) {
   const [offset, setOffset] = useState(0);
   const [allRows, setAllRows] = useState<IssueCostRow[]>([]);
   const [filterProject, setFilterProject] = useState(globalProjectFilter ?? '');
   const [filterPriority, setFilterPriority] = useState('');
+  const [selectedDay, setSelectedDay] = useState<string | null>(getHashDay);
 
   useEffect(() => {
     setFilterProject(globalProjectFilter ?? '');
   }, [globalProjectFilter]);
 
+  useEffect(() => {
+    function onHashChange() { setSelectedDay(getHashDay()); }
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+
+  function handleDayClick(date: string | null) {
+    setOffset(0);
+    setAllRows([]);
+    if (date) {
+      window.location.hash = `cost_day=${date}`;
+    } else {
+      history.pushState(null, '', window.location.pathname + window.location.search);
+      setSelectedDay(null);
+    }
+  }
+
   const query = useQuery({
-    queryKey: ['issues-cost', offset],
+    queryKey: ['issues-cost', offset, selectedDay],
     queryFn: async () => {
-      const rows = await fetchIssuesCost({ limit: LIMIT, offset });
+      const rows = await fetchIssuesCost({
+        limit: LIMIT,
+        offset,
+        day: selectedDay ?? undefined,
+      });
       setAllRows(prev => {
         const merged = offset === 0 ? rows : [...prev, ...rows];
         return merged;
@@ -83,6 +111,17 @@ export default function Cost({ globalProjectFilter }: CostProps) {
       priority: filterPriority || undefined,
     }),
     refetchInterval: 60_000,
+    staleTime: 0,
+  });
+
+  const timeseriesQuery = useQuery({
+    queryKey: ['cost-timeseries', filterProject, filterPriority],
+    queryFn: () => fetchCostTimeseries({
+      days: 30,
+      project: filterProject || undefined,
+      priority: filterPriority || undefined,
+    }),
+    refetchInterval: 30_000,
     staleTime: 0,
   });
 
@@ -131,6 +170,14 @@ export default function Cost({ globalProjectFilter }: CostProps) {
           vs_7d={trendQuery.data.vs_7d}
           vs_30d={trendQuery.data.vs_30d}
           buckets={trendQuery.data.buckets}
+        />
+      )}
+
+      {timeseriesQuery.data && (
+        <CostTimeseries
+          buckets={timeseriesQuery.data.buckets}
+          selectedDay={selectedDay}
+          onDayClick={handleDayClick}
         />
       )}
 
