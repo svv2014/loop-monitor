@@ -19,6 +19,7 @@ from server.routes import (  # noqa: E402
     action_queue,
     analytics,
     analytics_velocity,
+    anomalies,
     board,
     claude_usage,
     config,
@@ -39,6 +40,7 @@ app.include_router(analytics.router)
 app.include_router(health.router)
 app.include_router(ingest.router)
 app.include_router(analytics_velocity.router)
+app.include_router(anomalies.router)
 app.include_router(board.router)
 app.include_router(feed.router)
 app.include_router(runs.router)
