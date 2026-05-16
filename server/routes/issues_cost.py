@@ -12,60 +12,76 @@ from server.db import db_dep
 
 router = APIRouter()
 
-# (project, issue_number) -> (expiry_timestamp, meta_dict)
-_gh_cache: dict[tuple[str, int], tuple[float, dict]] = {}
-_GH_TTL = 60
+# Batch cache: project -> {issue_number: meta_dict}
+_gh_batch_cache: dict[str, dict[int, dict]] = {}
+_GH_BATCH_TTL = 60
 
 _PRIORITY_LABELS = {"p0-critical", "p1-high", "p2-medium", "p3-low"}
 _ROLES = ["po", "dev", "review", "qa", "merge"]
 _CHILD_RE = re.compile(r"(?:closes|depends\s+on)\s+#(\d+)", re.IGNORECASE)
 
 
-def _fetch_gh_meta(project: str, issue_number: int) -> dict:
-    key = (project, issue_number)
+def _fetch_gh_batch(project: str) -> dict[int, dict]:
+    """Fetch ALL open issues for a project in one gh api call."""
     now = datetime.now(timezone.utc).timestamp()
-    if key in _gh_cache:
-        expiry, data = _gh_cache[key]
+    if project in _gh_batch_cache:
+        expiry, data = _gh_batch_cache[project]
         if now < expiry:
             return data
 
-    default: dict = {"title": "", "state": "unknown", "priority": None, "body": "", "merged": False}
     repo = PROJECTS.get(project)
+    empty: dict[int, dict] = {}
     if not repo:
-        _gh_cache[key] = (now + _GH_TTL, default)
-        return default
+        _gh_batch_cache[project] = (now + _GH_BATCH_TTL, empty)
+        return empty
+
+    default_meta = {"title": "", "state": "unknown", "priority": None, "body": "", "merged": False}
+    result_map: dict[int, dict] = {}
+
     try:
+        # Single API call to list all open issues for the repo
         result = subprocess.run(
             [
                 "gh", "api",
-                f"repos/{repo}/issues/{issue_number}",
-                "--jq",
-                "{title, state, body, labels: [.labels[].name], pull_request}",
+                f"repos/{repo}/issues?state=all&per_page=100",
+                "--jq", ".[] | {number, title, state, body, labels: [.labels[].name], pull_request}",
             ],
             capture_output=True,
             text=True,
-            timeout=5,
+            timeout=15,
         )
         if result.returncode != 0:
-            _gh_cache[key] = (now + _GH_TTL, default)
-            return default
-        raw = json.loads(result.stdout)
-        labels: list[str] = raw.get("labels") or []
-        priority: Optional[str] = next((lbl for lbl in labels if lbl in _PRIORITY_LABELS), None)
-        pr_field = raw.get("pull_request") or {}
-        merged = bool(pr_field.get("merged_at"))
-        meta: dict = {
-            "title": raw.get("title") or "",
-            "state": raw.get("state") or "unknown",
-            "priority": priority,
-            "body": raw.get("body") or "",
-            "merged": merged,
-        }
-        _gh_cache[key] = (now + _GH_TTL, meta)
-        return meta
+            _gh_batch_cache[project] = (now + _GH_BATCH_TTL, empty)
+            return empty
+
+        # Parse line-by-line JSON output (--jq with .[] outputs one JSON per line)
+        for line in result.stdout.strip().split("\n"):
+            if not line:
+                continue
+            try:
+                raw = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            num = raw.get("number")
+            if num is None:
+                continue
+            labels: list[str] = raw.get("labels") or []
+            priority: Optional[str] = next((lbl for lbl in labels if lbl in _PRIORITY_LABELS), None)
+            pr_field = raw.get("pull_request") or {}
+            merged = bool(pr_field.get("merged_at"))
+            result_map[num] = {
+                "title": raw.get("title") or "",
+                "state": raw.get("state") or "unknown",
+                "priority": priority,
+                "body": raw.get("body") or "",
+                "merged": merged,
+            }
     except Exception:
-        _gh_cache[key] = (now + _GH_TTL, default)
-        return default
+        _gh_batch_cache[project] = (now + _GH_BATCH_TTL, empty)
+        return empty
+
+    _gh_batch_cache[project] = (now + _GH_BATCH_TTL, result_map)
+    return result_map
 
 
 def _parse_children(body: str) -> int:
@@ -256,12 +272,20 @@ def get_issues_cost(
         ).fetchall()
 
     now_ts = datetime.now(timezone.utc).timestamp()
+
+    # Batch-fetch GH metadata per project instead of per issue
+    projects_in_rows = {dict(r)["project"] for r in rows}
+    batch_meta: dict[str, dict[int, dict]] = {}
+    for proj in projects_in_rows:
+        batch_meta[proj] = _fetch_gh_batch(proj)
+
+    default_meta = {"title": "", "state": "unknown", "priority": None, "body": "", "merged": False}
     result = []
     for raw in rows:
         raw_dict = dict(raw)
         project_slug = raw_dict["project"]
         issue_num = raw_dict["issue_number"]
-        meta = _fetch_gh_meta(project_slug, issue_num)
+        meta = batch_meta.get(project_slug, {}).get(issue_num, default_meta)
         result.append(_build_row(raw_dict, meta, now_ts))
 
     result.sort(key=lambda r: (-r["rework_factor"], -r["actual_runs"]))
@@ -303,7 +327,6 @@ def get_cost_trend(
     since_dt = datetime.now(timezone.utc) - timedelta(days=days)
     since_iso = since_dt.isoformat()
 
-    # Fetch all events in the window to compute per-issue rework factors per day
     rows = conn.execute(
         """
         SELECT
@@ -321,41 +344,22 @@ def get_cost_trend(
         (since_iso, project, project),
     ).fetchall()
 
-    # Build a map of day -> list of rework_factors
-    # rework_factor per (day, issue) = actual_runs_that_day / 5  (simplified happy path = 5, no child info here)
-    # We use the same formula as _build_row but without child_count (would require GH API per day per issue)
-    day_factors: dict[str, list[float]] = {}
-    for row in rows:
-        day: str = row["day"]
-        actual: int = row["actual_runs"] or 0
-        if actual == 0:
-            continue
-        # simple rework factor without child lookup (consistent for trend)
-        rf = round(actual / 5, 4)
-        day_factors.setdefault(day, []).append(rf)
-
-    # Apply priority filter if given — we need to know which (project, issue_number) have that priority
-    # We fetch all issues in window and then filter by priority via GH meta
+    # Batch-fetch GH metadata for priority filtering
+    default_meta = {"title": "", "state": "unknown", "priority": None, "body": "", "merged": False}
     if priority:
-        # collect all unique (project, issue_number) in the window
-        meta_rows = conn.execute(
-            """
-            SELECT DISTINCT project, issue_number
-            FROM events
-            WHERE issue_number IS NOT NULL
-              AND created_at >= ?
-              AND (? IS NULL OR project = ?)
-            """,
-            (since_iso, project, project),
-        ).fetchall()
-        allowed: set[tuple[str, int]] = set()
-        for mr in meta_rows:
-            meta = _fetch_gh_meta(mr["project"], mr["issue_number"])
-            if meta.get("priority") == priority:
-                allowed.add((mr["project"], mr["issue_number"]))
+        projects_in_rows = {r["project"] for r in rows}
+        batch_meta: dict[str, dict[int, dict]] = {}
+        for proj in projects_in_rows:
+            batch_meta[proj] = _fetch_gh_batch(proj)
 
-        # rebuild day_factors filtered to allowed issues
-        day_factors = {}
+        allowed: set[tuple[str, int]] = set()
+        for row in rows:
+            key = (row["project"], row["issue_number"])
+            meta = batch_meta.get(row["project"], {}).get(row["issue_number"], default_meta)
+            if meta.get("priority") == priority:
+                allowed.add(key)
+
+        day_factors: dict[str, list[float]] = {}
         for row in rows:
             key = (row["project"], row["issue_number"])
             if key not in allowed:
@@ -366,8 +370,16 @@ def get_cost_trend(
                 continue
             rf = round(actual / 5, 4)
             day_factors.setdefault(day, []).append(rf)
+    else:
+        day_factors: dict[str, list[float]] = {}
+        for row in rows:
+            day: str = row["day"]
+            actual: int = row["actual_runs"] or 0
+            if actual == 0:
+                continue
+            rf = round(actual / 5, 4)
+            day_factors.setdefault(day, []).append(rf)
 
-    # Build sorted list of days in the window
     today_dt = datetime.now(timezone.utc).date()
     all_days = [(today_dt - timedelta(days=i)).isoformat() for i in range(days - 1, -1, -1)]
 
@@ -381,12 +393,10 @@ def get_cost_trend(
             "issue_count": len(factors),
         })
 
-    # today's stats
     today_factors = day_factors.get(today_dt.isoformat(), [])
     today_median = _median(today_factors)
     today_count = len(today_factors)
 
-    # comparison helpers
     def _median_for_day(offset_days: int) -> Optional[float]:
         d = (today_dt - timedelta(days=offset_days)).isoformat()
         return _median(day_factors.get(d, []))
@@ -399,7 +409,6 @@ def get_cost_trend(
     vs_7d = _delta(_median_for_day(7))
     vs_30d = _delta(_median_for_day(30))
 
-    # trend from linear regression on last 14 buckets that have data
     recent_medians = [b["median_rework_factor"] for b in buckets[-14:] if b["median_rework_factor"] is not None]
     if len(recent_medians) >= 3:
         slope = _linear_trend_slope(recent_medians)
