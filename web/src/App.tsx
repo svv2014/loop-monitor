@@ -11,6 +11,7 @@ import WorkerDetail from './screens/WorkerDetail';
 import Cost from './screens/Cost';
 import Analytics from './screens/Analytics';
 import Timeline from './screens/Timeline';
+import TimelinePanel from './panels/Timeline';
 import { useHashRoute } from './router';
 import { fetchActive, fetchFeed, fetchHealth } from './lib/api';
 
@@ -170,6 +171,7 @@ export default function App() {
           </div>
         )}
       </main>
+      <TimelinePanel />
     </div>
   );
 }

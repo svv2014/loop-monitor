@@ -28,6 +28,7 @@ import type {
   CostTrend,
   QualityAnalyticsResponse,
   CostTimeseries,
+  Timeline,
 } from './types';
 import * as fx from './fixtures';
 
@@ -231,6 +232,12 @@ export async function fetchAnalyticsQuality(days = 30): Promise<QualityAnalytics
 
 export async function fetchSlo(project: string): Promise<SloConfig> {
   return get<SloConfig>(`/api/projects/${encodeURIComponent(project)}/slo`);
+}
+
+export async function fetchTimeline(project: string, kind: 'issue' | 'pr', number: number): Promise<Timeline> {
+  if (isFixtureMode()) return fx.getFixtureTimeline(project, kind, number);
+  const selector = kind === 'issue' ? 'issue' : 'pr';
+  return get<Timeline>(`/api/timeline?project=${encodeURIComponent(project)}&${selector}=${number}`);
 }
 
 export async function putSlo(project: string, body: { total_seconds: number | null; breach_grace_seconds: number }): Promise<SloConfig> {

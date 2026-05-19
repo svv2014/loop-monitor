@@ -26,6 +26,7 @@ import type {
   ClaudeUsage,
   ScannerState,
   IssueCostRow,
+  Timeline,
 } from './types';
 
 interface FixtureProject { id: string; repo: string; color?: string }
@@ -425,5 +426,39 @@ export function getFixtureScannerState(): ScannerState {
       { project: 'project-b', kind: 'issue', number: 137, stage: 'po',  count: 1, max: 2 },
       { project: 'project-a', kind: 'issue', number: 142, stage: 'dev', count: 2, max: 2 },
     ],
+  };
+}
+
+export function getFixtureTimeline(project: string, kind: 'issue' | 'pr', number: number): Timeline {
+  const matching = HISTORY
+    .filter((event) => event.project === project)
+    .slice(0, 6)
+    .map((event, index) => ({
+      id: event.id,
+      role: event.role,
+      event_type: event.event_type,
+      model: event.model,
+      created_at: new Date(Date.now() - (index + 1) * 120_000).toISOString(),
+      duration_seconds: index % 2 === 0 ? randInt(45, 900) : null,
+      points: event.points,
+      detail: event.detail,
+    }));
+
+  return {
+    project,
+    kind,
+    number,
+    title: `Fixture ${kind} #${number}`,
+    github_url: `https://github.com/example-org/${project}/${kind === 'issue' ? 'issues' : 'pull'}/${number}`,
+    stage: 'loop:stage:dev',
+    linked_pr: kind === 'issue' ? number + 100 : null,
+    linked_issue: kind === 'pr' ? Math.max(1, number - 100) : null,
+    events: matching,
+    totals: {
+      total_duration_seconds: matching.reduce((sum, event) => sum + (event.duration_seconds ?? 0), 0),
+      total_points: matching.reduce((sum, event) => sum + (event.points ?? 0), 0),
+      rework_count: 1,
+      verdict: 'fixture',
+    },
   };
 }
