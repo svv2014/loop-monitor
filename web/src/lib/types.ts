@@ -363,3 +363,34 @@ export interface CostTrend {
   trend: 'improving' | 'degrading' | 'stable';
   buckets: CostTrendBucket[];
 }
+
+export interface TimelineEvent {
+  id: number;
+  role: string;
+  event_type: string;
+  model: string | null;
+  created_at: string;
+  duration_seconds: number | null;
+  points: number | null;
+  detail: string | null;
+}
+
+export interface TimelineTotals {
+  total_duration_seconds: number | null;
+  total_points: number;
+  rework_count: number;
+  verdict: string | null;
+}
+
+export interface Timeline {
+  project: string;
+  kind: 'issue' | 'pr';
+  number: number;
+  title: string | null;
+  github_url: string;
+  stage: string | null;
+  linked_pr: number | null;
+  linked_issue: number | null;
+  events: TimelineEvent[];
+  totals: TimelineTotals;
+}
